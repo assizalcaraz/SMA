@@ -8,6 +8,9 @@ Particle::Particle() {
     mass = 1.0f;
     id = 0;
     lastHitTime = 0.0f;
+    vel_pre = ofVec2f(0, 0);
+    last_hit_distance = 0.0f;
+    last_surface = -1;
 }
 
 //--------------------------------------------------------------
@@ -18,6 +21,9 @@ Particle::Particle(int _id, ofVec2f _home) {
     vel = ofVec2f(0, 0);
     mass = 1.0f;
     lastHitTime = 0.0f;
+    vel_pre = ofVec2f(0, 0);
+    last_hit_distance = 0.0f;
+    last_surface = -1;
 }
 
 //--------------------------------------------------------------
@@ -37,8 +43,25 @@ void Particle::update(float dt, float k_home, float k_drag) {
 }
 
 //--------------------------------------------------------------
+void Particle::bounce(int surface, float restitution, float width, float height) {
+    // Aplicar rebote según superficie
+    if (surface == 0 || surface == 1) {
+        // Bordes horizontales (L/R)
+        vel.x *= -restitution;
+        pos.x = ofClamp(pos.x, 0.0f, width);
+    } else if (surface == 2 || surface == 3) {
+        // Bordes verticales (T/B)
+        vel.y *= -restitution;
+        pos.y = ofClamp(pos.y, 0.0f, height);
+    }
+}
+
+//--------------------------------------------------------------
 void Particle::reset() {
     pos = home;
     vel = ofVec2f(0, 0);
     lastHitTime = 0.0f;
+    vel_pre = ofVec2f(0, 0);
+    last_hit_distance = 0.0f;
+    last_surface = -1;
 }
