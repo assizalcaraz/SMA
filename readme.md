@@ -8,7 +8,12 @@ Este sistema permite generar sonido en tiempo real a partir del movimiento corpo
 
 **Documentación técnica completa:** Ver [`spec.md`](spec.md) para detalles de implementación, arquitectura y especificaciones técnicas.
 
-**Documentación de parámetros:** Ver [`docs/parametros.md`](docs/parametros.md) para descripción detallada de todos los parámetros ajustables en la aplicación.
+**Índice de documentación:** Ver [`Docs/index.md`](Docs/index.md) para mapeo completo de código a documentación.
+
+**Documentación del módulo Particles:**
+- [`Docs/Particles/readme.md`](Docs/Particles/readme.md) - Descripción general
+- [`Docs/Particles/manual.md`](Docs/Particles/manual.md) - Manual de usuario (parámetros)
+- [`Docs/Particles/spec.md`](Docs/Particles/spec.md) - Especificación técnica
 
 ---
 
