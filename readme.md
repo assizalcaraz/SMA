@@ -8,6 +8,8 @@ Este sistema permite generar sonido en tiempo real a partir del movimiento corpo
 
 **Documentación técnica completa:** Ver [`spec.md`](spec.md) para detalles de implementación, arquitectura y especificaciones técnicas.
 
+**Documentación de parámetros:** Ver [`docs/parametros.md`](docs/parametros.md) para descripción detallada de todos los parámetros ajustables en la aplicación.
+
 ---
 
 ## Arquitectura del sistema
