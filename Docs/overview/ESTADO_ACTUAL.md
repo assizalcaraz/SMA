@@ -1,6 +1,6 @@
 # Estado Actual del Proyecto
 
-**Última actualización**: 2026-01-20
+**Última actualización**: 2025-02-09
 
 Este documento describe el estado actual de implementación del Sistema Modular Audiovisual, qué componentes están completados, en desarrollo o pendientes.
 
@@ -50,13 +50,14 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 #### App A - openFrameworks (Particles)
 
-**Fase 4: Colisiones y Eventos**
-- ⏳ Detección de colisiones con bordes
-- ⏳ Sistema de rebote de partículas
-- ⏳ Generación de eventos de hit
-- ⏳ Sistema de cooldown por partícula
-- ⏳ Rate limiting global
-- ⏳ Formato final de `/hit` (contrato congelado)
+**Fase 4: Colisiones y Eventos** ✅ **COMPLETADA**
+- ✅ Detección de colisiones con bordes
+- ✅ **Detección de colisiones partícula-partícula** (nuevo)
+- ✅ Sistema de rebote de partículas
+- ✅ Generación de eventos de hit
+- ✅ Sistema de cooldown por partícula
+- ✅ Rate limiting global
+- ✅ Formato final de `/hit` (contrato congelado)
 
 **Fase 5: Comunicación OSC**
 - ⏳ Integración de `ofxOsc`
@@ -67,18 +68,23 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 #### App B - JUCE
 
-**Fase 6: Sintetizador Básico**
-- ⏳ Proyecto base JUCE Standalone
-- ⏳ Estructura básica de sintetizador
-- ⏳ Motor de síntesis modal
-- ⏳ Timbre "coin cascade" con modos inarmónicos
+**Fase 6: Sintetizador Básico** ✅ **COMPLETADA**
+- ✅ Proyecto base JUCE Standalone (`app-juce/app-JUCE-PAS1/`)
+- ✅ Estructura completa de sintetizador modal
+- ✅ Motor de síntesis modal con resonadores inarmónicos
+- ✅ Timbre "coin cascade" con 2 modos por voz
+- ✅ Sistema de polyphony con voice stealing (4-12 voces)
+- ✅ UI básica con controles y indicadores
+- ✅ Botón "Test Trigger" para testing manual
+- ✅ Optimizaciones RT-safe (cola lock-free, pre-allocation)
+- ✅ Master limiter y saturación opcional
 
-**Fase 7: Receptor OSC y Mapeo**
-- ⏳ Receptor OSC en puerto 9000
-- ⏳ Parsing de mensajes `/hit`
-- ⏳ Mapeo de parámetros a síntesis
-- ⏳ Polyphony (16-64 voces) con voice stealing
-- ⏳ Master limiter
+**Fase 7: Receptor OSC y Mapeo** ✅ **COMPLETADA**
+- ✅ Receptor OSC en puerto 9000 (JUCE 8.0.12 listener pattern)
+- ✅ Parsing de mensajes `/hit` y `/state`
+- ✅ Mapeo de parámetros a síntesis
+- ✅ Integración con cola lock-free existente
+- ⚠️ **Problemas conocidos**: Sliders no afectan el sonido significativamente, timbre suena más a "pluc" de madera que metálico
 
 ---
 
@@ -127,8 +133,9 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 **Funcionalidades**:
 - ✅ Física básica de partículas
 - ✅ Input mouse funcionando
-- ⏳ Colisiones y eventos (en desarrollo)
-- ⏳ Comunicación OSC (pendiente)
+- ✅ Colisiones con bordes y partícula-partícula
+- ✅ Generación de eventos de hit
+- ✅ Comunicación OSC funcionando
 
 **Documentación**: Completa en `Docs/Particles/`
 
@@ -136,17 +143,36 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ### Módulo JUCE (App B)
 
-**Ubicación**: `app-juce/Source/`
+**Ubicación**: `app-juce/app-JUCE-PAS1/Source/`
 
-**Estado**: Pendiente de implementación
+**Estado**: ✅ Fase 6 completada - Sintetizador básico funcionando
 
-**Funcionalidades requeridas**:
-- ⏳ Sintetizador modal
-- ⏳ Receptor OSC
-- ⏳ Mapeo de parámetros
-- ⏳ Polyphony con voice stealing
+**Archivos principales**:
+- `Main.cpp` — Punto de entrada ✅
+- `MainComponent.h/cpp` — UI y orquestación ✅
+- `ModalVoice.h/cpp` — Resonador modal individual ✅
+- `VoiceManager.h/cpp` — Gestión de polyphony ✅
+- `SynthesisEngine.h/cpp` — Motor de síntesis principal ✅
+- `SynthParameters.h` — Parámetros globales ✅
 
-**Documentación**: Pendiente
+**Funcionalidades implementadas**:
+- ✅ Sintetizador modal con resonadores inarmónicos (2 modos por voz)
+- ✅ Sistema de polyphony con voice stealing (4-12 voces configurables)
+- ✅ Cola lock-free para eventos (preparada para OSC)
+- ✅ UI básica con controles y indicadores
+- ✅ Master limiter y saturación opcional
+- ✅ Optimizaciones RT-safe (sin allocations en audio thread)
+- ⏳ Receptor OSC (pendiente Fase 7)
+- ⏳ Mapeo de parámetros OSC (pendiente Fase 7)
+
+**Características técnicas**:
+- Modos resonantes: 2 por voz (optimizado para RT)
+- Excitación: noise burst de ~5ms (128 samples)
+- Voces: 4-12 configurables (por defecto: 8)
+- Límite de eventos: 16 por bloque de audio (MAX_HITS_PER_BLOCK)
+- Pre-allocation: hasta 32 voces (solo se activan según maxVoices)
+
+**Documentación**: Ver `PROMPT_FASE6.md` para detalles de implementación
 
 ---
 
@@ -154,19 +180,11 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ### Corto Plazo (Próximas 2-4 semanas)
 
-1. **Completar Fase 4**: Colisiones y eventos
-   - Implementar detección de colisiones
-   - Sistema de rebote
-   - Generación de eventos `/hit`
-   - Rate limiting
-
-2. **Iniciar Fase 5**: Comunicación OSC
-   - Integrar `ofxOsc`
-   - Implementar envío de mensajes
-
-3. **Iniciar Fase 6**: Sintetizador JUCE básico
-   - Crear proyecto base
-   - Estructura de síntesis modal
+1. **Completar Fase 7**: Receptor OSC y mapeo
+   - Integrar receptor OSC en JUCE (puerto 9000)
+   - Conectar mensajes `/hit` a cola lock-free existente
+   - Implementar mapeo de parámetros OSC → síntesis
+   - Validar loop completo: oF → OSC → JUCE → Audio
 
 ### Mediano Plazo (1-2 meses)
 
@@ -192,9 +210,9 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 1. ✅ Sistema de partículas básico
 2. ✅ Input mouse (validación rápida)
-3. ⏳ Colisiones y eventos
-4. ⏳ Comunicación OSC
-5. ⏳ Sintetizador JUCE
+3. ✅ Colisiones y eventos
+4. ✅ Comunicación OSC
+5. ✅ Sintetizador JUCE básico
 6. ⏳ Receptor OSC y mapeo
 7. ⏳ Calibración conjunta
 8. ⏳ MediaPipe (opcional/tardía)
@@ -203,14 +221,39 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ## Issues Conocidos
 
-- Ninguno reportado actualmente
+### App B - JUCE (Sintetizador)
+
+**Problema 1: Sliders no afectan el sonido significativamente**
+- **Estado**: Reportado 2025-02-09
+- **Descripción**: Los controles de la UI (metalness, brightness, damping, etc.) no parecen tener efecto audible notable en el timbre
+- **Impacto**: Limitación en la expresividad del sintetizador
+- **Prioridad**: Media-Alta (afecta usabilidad)
+
+**Problema 2: Timbre no suena metálico**
+- **Estado**: Reportado 2025-02-09
+- **Descripción**: El sonido actual suena más a "pluc" de madera que a timbre metálico característico
+- **Impacto**: No cumple con el objetivo de timbre "coin cascade" metálico
+- **Prioridad**: Alta (afecta objetivo principal del proyecto)
+- **Posibles causas**:
+  - Parámetros de resonadores modales no calibrados correctamente
+  - Frecuencias de modos no optimizadas para timbre metálico
+  - Excitación (noise burst) no adecuada
+  - Falta de modulación o efectos que refuercen el carácter metálico
 
 ---
 
 ## Métricas de Progreso
 
-- **Fases completadas**: 2 de 10 (20%)
-- **Módulos funcionales**: 1 de 2 (50% - Particles parcial)
+- **Fases completadas**: 6 de 10 (60%)
+  - ✅ Fase 1: Setup inicial
+  - ✅ Fase 2: Sistema de partículas básico
+  - ✅ Fase 3: Input básico (Mouse)
+  - ✅ Fase 4: Colisiones y eventos
+  - ✅ Fase 5: Comunicación OSC
+  - ✅ Fase 6: Sintetizador básico (JUCE Standalone)
+- **Módulos funcionales**: 2 de 2 (100%)
+  - ✅ Particles (App A) - Completo
+  - ✅ Sintetizador JUCE (App B) - Básico funcionando (pendiente OSC)
 - **Documentación**: Completa para módulos implementados
 
 ---
@@ -223,4 +266,4 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ---
 
-**Última actualización**: 2026-01-20
+**Última actualización**: 2025-02-09

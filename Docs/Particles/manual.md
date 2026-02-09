@@ -205,6 +205,49 @@ Tiempo mínimo entre hits de la misma partícula. Previene spam de eventos cuand
 
 ---
 
+### particle_radius
+
+**Slider:** `particle_radius`  
+**Tipo:** `float`  
+**Rango:** 2.0 - 20.0  
+**Valor por defecto:** 5.0  
+**Unidad:** pixels  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Radio de colisión entre partículas. Controla la distancia mínima a la que dos partículas se consideran en colisión. La distancia de colisión efectiva es `2 * particle_radius`.
+
+**Efectos:**
+- **Valores bajos (2-5px):** Colisiones más precisas, solo cuando partículas están muy cerca
+- **Valores medios (5-10px):** Balance entre precisión y frecuencia de colisiones
+- **Valores altos (15-20px):** Colisiones más frecuentes, partículas "grandes" que colisionan fácilmente
+
+**Uso:** Ajustar según la densidad de partículas y frecuencia deseada de colisiones. Valores bajos = menos colisiones pero más precisas, valores altos = más colisiones pero menos precisas.
+
+**Nota:** Este parámetro solo afecta colisiones partícula-partícula, no colisiones con bordes.
+
+---
+
+### enable_particle_collisions
+
+**Toggle:** `enable_particle_collisions`  
+**Tipo:** `bool`  
+**Valor por defecto:** `true` (habilitado)  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Habilita o deshabilita la detección de colisiones entre partículas. Cuando está deshabilitado, solo se detectan colisiones con los bordes de la ventana.
+
+**Efectos:**
+- **Habilitado (true):** Las partículas pueden colisionar entre sí, generando eventos adicionales
+- **Deshabilitado (false):** Solo se detectan colisiones con bordes
+
+**Uso:** Deshabilitar si quieres reducir la cantidad de eventos o si las colisiones partícula-partícula generan demasiado ruido. Habilitar para un comportamiento más dinámico y rico en eventos.
+
+**Nota:** Las colisiones partícula-partícula generan eventos con `surface = -1` para distinguirlos de colisiones con bordes.
+
+---
+
 ## Parámetros de Energía
 
 ### vel_ref

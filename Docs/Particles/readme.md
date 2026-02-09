@@ -46,6 +46,7 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 
 - **Fase 4**: Colisiones y eventos
   - Detección de colisiones con bordes
+  - **Detección de colisiones partícula-partícula** (nuevo)
   - Sistema de rebote con coeficiente de restitución
   - Cálculo de energía de impacto
   - Generación de eventos de hit
@@ -74,6 +75,7 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 - Retorno al origen (home)
 - Influencia de gestos del usuario
 - Integración numérica estable
+- **Colisiones partícula-partícula** con rebote elástico
 
 ### Input
 
@@ -90,6 +92,8 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 - `speed_ref` (100-2000) — Velocidad de referencia
 - `restitution` (0.2-0.85) — Coeficiente de rebote
 - `hit_cooldown` (30-120 ms) — Cooldown por partícula
+- `particle_radius` (2-20 px) — Radio de colisión entre partículas
+- `enable_particle_collisions` (toggle) — Habilitar/deshabilitar colisiones partícula-partícula
 - `vel_ref` (300-1000) — Velocidad de referencia para energía
 - `dist_ref` (20-100) — Distancia de referencia para energía
 - `energy_a` (0.5-0.9) — Peso de velocidad en energía

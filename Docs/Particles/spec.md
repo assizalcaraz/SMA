@@ -268,6 +268,64 @@ Detecta colisiones de partículas con los bordes de la ventana y genera eventos 
 - `1` = Borde derecho (x > width)
 - `2` = Borde superior (y < 0)
 - `3` = Borde inferior (y > height)
+- `-1` = Colisión partícula-partícula (no superficie)
+
+#### `ofApp::checkParticleCollisions()`
+
+Detecta colisiones entre partículas y genera eventos de hit.
+
+**Algoritmo:**
+1. Guarda velocidades PRE-colisión para todas las partículas
+2. Para cada pareja de partículas (i, j) donde i < j:
+   - Calcula distancia: `distance = |p1.pos - p2.pos|`
+   - Si `distance < 2 * particle_radius`:
+     - Calcula punto de colisión: `collisionPoint = (p1.pos + p2.pos) * 0.5`
+     - Calcula velocidad relativa: `relVel = p1.vel_pre - p2.vel_pre`
+     - Calcula normal: `normal = (p1.pos - p2.pos).normalized()`
+     - Si partículas se acercan (`relVel.dot(normal) < 0`):
+       - Aplica rebote elástico
+       - Separa partículas para evitar penetración
+       - Genera evento: `generateParticleHitEvent(p1, p2, collisionPoint)`
+
+**Física de rebote:**
+- Impulso: `impulse = velAlongNormal * (1.0 + restitution)`
+- Aplicación: `p1.vel -= normal * impulse * 0.5`, `p2.vel += normal * impulse * 0.5`
+- Separación: `overlap = 2*radius - distance`, separación proporcional a overlap
+
+#### `ofApp::calculateParticleCollisionEnergy(Particle& p1, Particle& p2)`
+
+Calcula la energía del impacto entre dos partículas basada en velocidad relativa.
+
+**Fórmulas:**
+```
+relSpeed = |p1.vel_pre - p2.vel_pre|
+speed_norm = clamp(relSpeed / vel_ref, 0..1)
+avg_distance = (p1.last_hit_distance + p2.last_hit_distance) * 0.5
+dist_norm = clamp(avg_distance / dist_ref, 0..1)
+energy = clamp(energy_a * speed_norm + energy_b * dist_norm, 0..1)
+```
+
+**Parámetros:**
+- `p1`, `p2`: Referencias a las partículas en colisión
+
+**Retorna:** Energía normalizada (0..1)
+
+#### `ofApp::generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisionPoint)`
+
+Genera un evento de hit cuando dos partículas colisionan.
+
+**Algoritmo:**
+1. Verifica cooldown para ambas partículas (al menos una debe estar fuera de cooldown)
+2. Calcula energía: `energy = calculateParticleCollisionEnergy(p1, p2)`
+3. Selecciona partícula con mayor velocidad para ID del evento
+4. Crea `HitEvent`:
+   - `id = p.id` (partícula con mayor velocidad)
+   - `x = collisionPoint.x / width` (normalizado)
+   - `y = collisionPoint.y / height` (normalizado)
+   - `energy = energy`
+   - `surface = -1` (indica colisión partícula-partícula)
+5. Agrega a `pending_hits`
+6. Actualiza estado de ambas partículas (`lastHitTime`, `last_hit_distance`, `last_surface = -1`)
 
 #### `ofApp::calculateHitEnergy(Particle& p, int surface)`
 
