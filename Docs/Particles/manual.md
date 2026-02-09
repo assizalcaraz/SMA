@@ -2,7 +2,7 @@
 
 Manual de usuario del módulo de partículas. Guía completa de parámetros y uso.
 
-**Última actualización:** Fase 3 completada (input mouse)
+**Última actualización:** Fase 4 completada (colisiones y eventos)
 
 **Ver también:**
 - [`readme.md`](readme.md) - Descripción general del módulo
@@ -160,6 +160,212 @@ Velocidad de referencia para normalizar la velocidad del gesto. Usado para calcu
 
 ---
 
+## Parámetros de Colisiones
+
+### restitution
+
+**Slider:** `restitution`  
+**Tipo:** `float`  
+**Rango:** 0.2 - 0.85  
+**Valor por defecto:** 0.6  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Coeficiente de restitución (rebote). Controla qué tan "elástico" es el rebote de las partículas al chocar con los bordes.
+
+**Fórmula:** `vel_after = -restitution * vel_before`
+
+**Efectos:**
+- **Valores bajos (0.2-0.4):** Rebote muy amortiguado, partículas pierden mucha energía al chocar
+- **Valores medios (0.5-0.7):** Rebote moderado, balance entre energía y control
+- **Valores altos (0.75-0.85):** Rebote muy elástico, partículas mantienen mucha energía
+
+**Uso:** Controlar el "rebote" del sistema. Valores altos = partículas más "saltarinas", valores bajos = más controladas.
+
+---
+
+### hit_cooldown (ms)
+
+**Slider:** `hit_cooldown (ms)`  
+**Tipo:** `float`  
+**Rango:** 30.0 - 120.0  
+**Valor por defecto:** 60.0  
+**Unidad:** milisegundos  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Tiempo mínimo entre hits de la misma partícula. Previene spam de eventos cuando una partícula está "pegada" al borde.
+
+**Efectos:**
+- **Valores bajos (30-50ms):** Permite hits más frecuentes, más eventos pero puede generar spam
+- **Valores medios (60-80ms):** Balance entre frecuencia y control
+- **Valores altos (100-120ms):** Hits más espaciados, menos eventos pero más controlados
+
+**Uso:** Ajustar según la frecuencia deseada de eventos. Valores bajos = más eventos, valores altos = más control.
+
+---
+
+## Parámetros de Energía
+
+### vel_ref
+
+**Slider:** `vel_ref`  
+**Tipo:** `float`  
+**Rango:** 300.0 - 1000.0  
+**Valor por defecto:** 500.0  
+**Unidad:** pixels/segundo  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Velocidad de referencia para calcular la energía del impacto. Usado para normalizar la velocidad de la partícula antes del choque.
+
+**Fórmula:** `speed_norm = clamp(|vel_pre| / vel_ref, 0..1)`
+
+**Efectos:**
+- **Valores bajos (300-400):** Velocidades normales se consideran "altas", más energía en hits
+- **Valores medios (500-700):** Sensibilidad moderada
+- **Valores altos (800-1000):** Requiere velocidades muy altas para máxima energía
+
+**Uso:** Ajustar según la velocidad típica de las partículas. Si las partículas se mueven rápido, aumentar. Si se mueven lento, disminuir.
+
+---
+
+### dist_ref
+
+**Slider:** `dist_ref`  
+**Tipo:** `float`  
+**Rango:** 20.0 - 100.0  
+**Valor por defecto:** 50.0  
+**Unidad:** pixels  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Distancia de referencia para calcular la energía del impacto. Usado para normalizar la distancia recorrida desde el último hit.
+
+**Fórmula:** `dist_norm = clamp(dist_traveled / dist_ref, 0..1)`
+
+**Efectos:**
+- **Valores bajos (20-40):** Distancias cortas se consideran "largas", más energía en hits
+- **Valores medios (50-70):** Sensibilidad moderada
+- **Valores altos (80-100):** Requiere distancias largas para máxima energía
+
+**Uso:** Ajustar según la escala de movimiento. Si las partículas se mueven en distancias cortas, disminuir. Si se mueven en distancias largas, aumentar.
+
+---
+
+### energy_a
+
+**Slider:** `energy_a`  
+**Tipo:** `float`  
+**Rango:** 0.5 - 0.9  
+**Valor por defecto:** 0.7  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Peso de la velocidad en el cálculo de energía. Controla qué tan importante es la velocidad vs. la distancia.
+
+**Fórmula:** `energy = clamp(energy_a * speed_norm + energy_b * dist_norm, 0..1)`
+
+**Efectos:**
+- **Valores bajos (0.5-0.6):** Menos peso a velocidad, más peso a distancia
+- **Valores medios (0.7-0.8):** Balance entre velocidad y distancia
+- **Valores altos (0.85-0.9):** Más peso a velocidad, menos a distancia
+
+**Uso:** Si quieres que los hits rápidos tengan más energía, aumentar. Si quieres que los hits de partículas que viajaron lejos tengan más energía, disminuir.
+
+---
+
+### energy_b
+
+**Slider:** `energy_b`  
+**Tipo:** `float`  
+**Rango:** 0.1 - 0.5  
+**Valor por defecto:** 0.3  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Peso de la distancia en el cálculo de energía. Controla qué tan importante es la distancia vs. la velocidad.
+
+**Fórmula:** `energy = clamp(energy_a * speed_norm + energy_b * dist_norm, 0..1)`
+
+**Efectos:**
+- **Valores bajos (0.1-0.2):** Menos peso a distancia, más peso a velocidad
+- **Valores medios (0.3-0.4):** Balance entre distancia y velocidad
+- **Valores altos (0.45-0.5):** Más peso a distancia, menos a velocidad
+
+**Uso:** Complementario a `energy_a`. Generalmente `energy_a + energy_b ≈ 1.0` para balance.
+
+**Nota:** `energy_a` y `energy_b` trabajan juntos. Aumentar uno generalmente implica disminuir el otro para mantener balance.
+
+---
+
+## Parámetros de Rate Limiting
+
+### max_hits/s
+
+**Slider:** `max_hits/s`  
+**Tipo:** `float`  
+**Rango:** 50.0 - 500.0  
+**Valor por defecto:** 200.0  
+**Unidad:** hits por segundo  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Máximo de hits permitidos por segundo (tasa de tokens). Controla la frecuencia global de eventos usando un sistema de token bucket.
+
+**Efectos:**
+- **Valores bajos (50-100):** Menos eventos por segundo, más controlado
+- **Valores medios (150-250):** Balance entre frecuencia y control
+- **Valores altos (300-500):** Muchos eventos por segundo, más dinámico
+
+**Uso:** Ajustar según la capacidad del sistema receptor (OSC/JUCE). Valores altos = más eventos pero más carga.
+
+---
+
+### burst
+
+**Slider:** `burst`  
+**Tipo:** `float`  
+**Rango:** 100.0 - 500.0  
+**Valor por defecto:** 300.0  
+**Unidad:** tokens  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Máximo de tokens acumulados (burst máximo). Permite picos temporales de eventos por encima de la tasa promedio.
+
+**Efectos:**
+- **Valores bajos (100-200):** Picos más limitados, más uniforme
+- **Valores medios (250-350):** Permite picos moderados
+- **Valores altos (400-500):** Permite picos grandes de eventos
+
+**Uso:** Controlar la "capacidad de pico" del sistema. Valores altos = permite ráfagas de eventos, valores bajos = más uniforme.
+
+**Nota:** El sistema acumula tokens a la tasa de `max_hits/s`, pero puede tener hasta `burst` tokens acumulados.
+
+---
+
+### max_hits/frame
+
+**Slider:** `max_hits/frame`  
+**Tipo:** `int`  
+**Rango:** 5 - 20  
+**Valor por defecto:** 10  
+**Unidad:** hits por frame  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Máximo de hits procesados en un solo frame. Previene sobrecarga en frames con muchas colisiones simultáneas.
+
+**Efectos:**
+- **Valores bajos (5-8):** Menos hits por frame, más distribuidos
+- **Valores medios (10-15):** Balance entre procesamiento y distribución
+- **Valores altos (18-20):** Más hits por frame, puede causar picos de carga
+
+**Uso:** Controlar la carga por frame. Valores altos = más hits simultáneos pero más carga, valores bajos = más distribuido.
+
+---
+
 ## Parámetros Internos (No ajustables en GUI)
 
 ### smooth_alpha
@@ -242,6 +448,27 @@ sigma: 180
 speed_ref: 500
 ```
 
+### Escenario 5: Sistema con Colisiones Activas (Configuración Interesante)
+```
+N Particles: 8000
+k_home: 0.5275
+k_drag: 0.5875
+k_gesture: 200
+sigma: 131
+speed_ref: 100
+restitution: 0.45675
+hit_cooldown: 60 ms
+vel_ref: 702.5
+dist_ref: 96.4
+energy_a: 0.5
+energy_b: 0.1
+max_hits/s: 70.25
+burst: 132
+max_hits/frame: 9
+```
+
+**Nota:** Esta configuración está optimizada para generar colisiones frecuentes con gestos normales, usando valores bajos de `k_home` y `k_drag` para permitir más movimiento libre, y `k_gesture` alto para empujar partículas hacia los bordes.
+
 ---
 
 ## Notas de Implementación
@@ -262,6 +489,14 @@ speed_ref: 500
 - Agregados: `k_gesture`, `sigma`, `speed_ref`
 - Documentación inicial creada
 
+**Fase 4 (Colisiones y eventos):**
+- Agregados: `restitution`, `hit_cooldown`, `vel_ref`, `dist_ref`, `energy_a`, `energy_b`
+- Agregados: `max_hits/s`, `burst`, `max_hits/frame`
+- Sistema de detección de colisiones con bordes
+- Sistema de rate limiting (token bucket)
+- Cálculo de energía de impacto
+- Generación de eventos de hit
+
 ---
 
-**Próximas fases:** Se agregarán parámetros de colisiones, rate limiting y OSC en fases futuras.
+**Próximas fases:** Comunicación OSC (Fase 5) para enviar eventos al sintetizador.

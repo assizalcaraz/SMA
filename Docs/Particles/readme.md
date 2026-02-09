@@ -1,7 +1,7 @@
 # Documentación del Módulo Particles
 
 **Módulo**: App A - openFrameworks  
-**Estado**: Fase 3 completada (input mouse funcionando)
+**Estado**: Fase 4 completada (colisiones y eventos funcionando)
 
 Este módulo implementa el sistema de partículas físicas que responde a gestos del usuario (mouse o MediaPipe) y genera eventos sonoros mediante colisiones.
 
@@ -44,17 +44,24 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
   - Fuerza de gesto con influencia gaussiana
   - Parámetros ajustables
 
-### ⏳ En Desarrollo
-
 - **Fase 4**: Colisiones y eventos
   - Detección de colisiones con bordes
-  - Sistema de rebote
+  - Sistema de rebote con coeficiente de restitución
+  - Cálculo de energía de impacto
   - Generación de eventos de hit
-  - Rate limiting
+  - Rate limiting (token bucket)
+  - Cooldown por partícula
+  - Estadísticas de debug
+
+### ⏳ En Desarrollo
+
+- **Fase 5**: Comunicación OSC
+  - Integración de ofxOsc
+  - Envío de mensajes /hit
+  - Configuración de host y puerto
 
 ### 📋 Pendiente
 
-- **Fase 5**: Comunicación OSC
 - **Fase 3b**: Integración MediaPipe (opcional/tardía)
 
 ---
@@ -78,9 +85,18 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 - `N_particles` (500-8000) — Número de partículas
 - `k_home` (0.5-6.0) — Fuerza de retorno al origen
 - `k_drag` (0.5-3.0) — Fuerza de drag
-- `k_gesture` — Fuerza de gesto
-- `sigma` — Radio de influencia del gesto
-- `speed_ref` — Velocidad de referencia
+- `k_gesture` (0-200) — Fuerza de gesto
+- `sigma` (50-500) — Radio de influencia del gesto
+- `speed_ref` (100-2000) — Velocidad de referencia
+- `restitution` (0.2-0.85) — Coeficiente de rebote
+- `hit_cooldown` (30-120 ms) — Cooldown por partícula
+- `vel_ref` (300-1000) — Velocidad de referencia para energía
+- `dist_ref` (20-100) — Distancia de referencia para energía
+- `energy_a` (0.5-0.9) — Peso de velocidad en energía
+- `energy_b` (0.1-0.5) — Peso de distancia en energía
+- `max_hits/s` (50-500) — Máximo de hits por segundo
+- `burst` (100-500) — Burst máximo de tokens
+- `max_hits/frame` (5-20) — Máximo de hits por frame
 
 ---
 
@@ -356,20 +372,23 @@ Partículas → Colisiones → Eventos → OSC → JUCE
 
 ## Roadmap Detallado
 
-### Fase 4: Colisiones y Eventos (En Desarrollo)
+### Fase 4: Colisiones y Eventos (✅ Completada)
 
 **Objetivos**:
-- Detección de colisiones con bordes de ventana
-- Sistema de rebote físico
-- Generación de eventos `/hit` con información de colisión
-- Cooldown por partícula para evitar spam
-- Rate limiting global (máx. eventos/segundo)
+- ✅ Detección de colisiones con bordes de ventana
+- ✅ Sistema de rebote físico con coeficiente de restitución
+- ✅ Generación de eventos `/hit` con información de colisión
+- ✅ Cooldown por partícula para evitar spam
+- ✅ Rate limiting global (token bucket)
+- ✅ Cálculo de energía de impacto (velocidad + distancia)
 
 **Entregables**:
-- Función `checkCollisions()` en `ofApp`
-- Estructura de datos para eventos
-- Sistema de cooldown
-- Formato final de mensaje `/hit` (contrato congelado)
+- ✅ Función `checkCollisions()` en `ofApp`
+- ✅ Estructura de datos `HitEvent` para eventos
+- ✅ Sistema de cooldown por partícula
+- ✅ Rate limiter con token bucket
+- ✅ Cálculo de energía basado en velocidad y distancia
+- ✅ Estadísticas de debug (hits/seg, descartados, tokens)
 
 ### Fase 5: Comunicación OSC (Pendiente)
 
