@@ -30,7 +30,7 @@
 
 ### API y Contratos
 
-- [`docs/api-osc.md`](../docs/api-osc.md) - Contrato OSC entre App A y App B
+- [`Docs/api-osc.md`](api-osc.md) - Contrato OSC entre App A y App B
 
 ### Especificaciones del Proyecto
 
