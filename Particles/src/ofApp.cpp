@@ -46,11 +46,11 @@ void ofApp::draw(){
     ofSetColor(255, 255, 255); // Blanco/azulado metálico
     glPointSize(2.0f);
     glEnable(GL_POINT_SMOOTH);
-    ofBeginShape(GL_POINTS);
+    glBegin(GL_POINTS);
     for (const auto& p : particles) {
-        ofVertex(p.pos);
+        glVertex2f(p.pos.x, p.pos.y);
     }
-    ofEndShape();
+    glEnd();
     glDisable(GL_POINT_SMOOTH);
     
     // Debug overlay
