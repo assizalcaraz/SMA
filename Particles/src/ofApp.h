@@ -1,6 +1,9 @@
 #pragma once
 
 #include "ofMain.h"
+#include "ofxGui.h"
+#include "Particle.h"
+#include <vector>
 
 class ofApp : public ofBaseApp{
 
@@ -23,4 +26,22 @@ class ofApp : public ofBaseApp{
 		void dragEvent(ofDragInfo dragInfo) override;
 		void gotMessage(ofMessage msg) override;
 		
+	private:
+		// Partículas
+		std::vector<Particle> particles;
+		
+		// Parámetros físicos
+		float k_home;
+		float k_drag;
+		
+		// GUI
+		ofxPanel gui;
+		ofxIntSlider nParticlesSlider;
+		ofxFloatSlider kHomeSlider;
+		ofxFloatSlider kDragSlider;
+		
+		// Funciones auxiliares
+		void initializeParticles(int n);
+		void resizeParticles(int newN);
+		void drawDebugOverlay();
 };
