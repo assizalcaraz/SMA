@@ -485,8 +485,6 @@
 				"809A719D-C675-4A71-9DA4-47438D645E5C"
 			],
 			"isa": "PBXGroup",
-			"name": "oscpack",
-			"path": "oscpack",
 			"sourceTree": "<group>"
 		},
 		"0CA2F3E8-075F-4EEF-96EB-CE531206A396": {
@@ -1026,7 +1024,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "OscReceivedElements.cpp",
 			"sourceTree": "<group>"
 		},
 		"1D61B16E-E254-4B02-96B2-408B8D161027": {
@@ -1181,7 +1178,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "OscPacketListener.h",
 			"sourceTree": "<group>"
 		},
 		"1FFA8DC4-4269-441F-8708-DBA9A097F79E": {
@@ -1908,7 +1904,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "MessageMappingOscPacketListener.h",
 			"sourceTree": "<group>"
 		},
 		"32C3B036-06E4-4598-9E2A-CA0D4C2CC16D": {
@@ -1952,7 +1947,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "OscReceivedElements.h",
 			"sourceTree": "<group>"
 		},
 		"33FD4991-29C5-4BF1-B0D7-023D7C1F19EC": {
@@ -4216,7 +4210,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "OscTypes.h",
 			"sourceTree": "<group>"
 		},
 		"6D174AB8-9751-4BFB-8E73-4426A66EE04A": {
@@ -4783,7 +4776,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "OscPrintReceivedElements.h",
 			"sourceTree": "<group>"
 		},
 		"7C93D0AD-27D4-4EA1-8F80-0E292A2426B9": {
@@ -8659,7 +8651,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "OscPrintReceivedElements.cpp",
 			"sourceTree": "<group>"
 		},
 		"DDBB0F4F-F46F-42C6-A50B-0670854AB0EA": {
@@ -10043,7 +10034,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "OscTypes.cpp",
 			"sourceTree": "<group>"
 		},
 		"FCB4FF9E-6461-4581-A17B-E14C44E1876A": {
