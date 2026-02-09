@@ -35,10 +35,37 @@ MainComponent::MainComponent()
     activeVoicesLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(&activeVoicesLabel);
     
+    // OSC Receiver setup
+    oscStatusLabel.setText("OSC: Disconnected", juce::dontSendNotification);
+    oscStatusLabel.setJustificationType(juce::Justification::centred);
+    oscStatusLabel.setColour(juce::Label::textColourId, juce::Colours::red);
+    addAndMakeVisible(&oscStatusLabel);
+    
+    oscMessageCountLabel.setText("OSC Messages: 0/s", juce::dontSendNotification);
+    oscMessageCountLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&oscMessageCountLabel);
+    
+    // Initialize OSC receiver
+    // Use OSCReceiver::Listener<MessageLoopCallback> pattern for JUCE 8.0.12
+    if (oscReceiver.connect(9000))
+    {
+        oscReceiver.addListener(this);  // Register listener without address filter
+        oscStatusLabel.setText("OSC: Connected (port 9000)", juce::dontSendNotification);
+        oscStatusLabel.setColour(juce::Label::textColourId, juce::Colours::green);
+    }
+    else
+    {
+        oscStatusLabel.setText("OSC: Connection failed", juce::dontSendNotification);
+        oscStatusLabel.setColour(juce::Label::textColourId, juce::Colours::red);
+    }
+    
+    lastOscActivityTimestamp = juce::Time::currentTimeMillis();
+    lastOscCountUpdateTime = juce::Time::currentTimeMillis();
+    
     // Make sure you set the size of the component after
     // you add any child components.
     setSize (800, 600);
-    
+        
     // Iniciar timer para actualizar indicadores
     startTimer(50); // Actualizar cada 50ms
 
@@ -58,6 +85,10 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+    // Remove OSC listener before disconnecting
+    oscReceiver.removeListener(this);
+    oscReceiver.disconnect();
+    
     // This shuts down the audio device and clears the audio source.
     shutdownAudio();
 }
@@ -70,6 +101,12 @@ void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRat
 
     // Preparar el motor de síntesis
     synthesisEngine.prepare(sampleRate);
+    
+    // Log para debugging: verificar buffer size
+    // Si el buffer es muy pequeño (< 256), puede causar sobrecarga del audio thread
+    // Recomendado: buffer size de 256-512 samples para estabilidad RT
+    DBG("Audio prepared: sampleRate=" << sampleRate 
+        << ", bufferSize=" << samplesPerBlockExpected);
 }
 
 void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill)
@@ -143,6 +180,8 @@ void MainComponent::resized()
     auto bottomArea = area;
     outputLevelLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
     activeVoicesLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
+    oscStatusLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
+    oscMessageCountLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
 }
 
 //==============================================================================
@@ -201,6 +240,30 @@ void MainComponent::timerCallback()
     int activeVoices = synthesisEngine.getActiveVoiceCount();
     activeVoicesLabel.setText("Active Voices: " + juce::String(activeVoices), 
                              juce::dontSendNotification);
+    
+    // Update OSC indicators (messages are now processed via listener callback)
+    juce::int64 currentTime = juce::Time::currentTimeMillis();
+    if (currentTime - lastOscCountUpdateTime >= 1000) // Update every second
+    {
+        oscMessagesPerSecond.store(oscMessageCountAccumulator.load());
+        oscMessageCountAccumulator.store(0);
+        lastOscCountUpdateTime = currentTime;
+    }
+    
+    int messagesPerSec = oscMessagesPerSecond.load();
+    oscMessageCountLabel.setText("OSC Messages: " + juce::String(messagesPerSec) + "/s", 
+                                juce::dontSendNotification);
+    
+    // Update OSC status color based on recent activity
+    juce::int64 timeSinceLastMessage = currentTime - lastOscActivityTimestamp;
+    if (timeSinceLastMessage < 2000) // Active if message in last 2 seconds
+    {
+        if (oscStatusLabel.getText() != "OSC: Connected (port 9000)")
+        {
+            oscStatusLabel.setText("OSC: Connected (port 9000)", juce::dontSendNotification);
+            oscStatusLabel.setColour(juce::Label::textColourId, juce::Colours::green);
+        }
+    }
 }
 
 //==============================================================================
@@ -217,4 +280,129 @@ void MainComponent::setupSlider(juce::Slider& slider, juce::Label& label,
     label.setText(name, juce::dontSendNotification);
     label.attachToComponent(&slider, true);
     addAndMakeVisible(&label);
+}
+
+//==============================================================================
+void MainComponent::oscMessageReceived(const juce::OSCMessage& message)
+{
+    // Update activity timestamp and counters (atomic, thread-safe)
+    lastOscActivityTimestamp = juce::Time::currentTimeMillis();
+    oscMessageCountAccumulator++;
+    
+    // Get address from message using correct JUCE 8.0.12 API
+    juce::String address = message.getAddressPattern().toString();
+    
+    // Route to appropriate handler based on address pattern
+    if (address == "/hit")
+    {
+        mapOSCHitToEvent(message);
+    }
+    else if (address == "/state")
+    {
+        updateOSCState(message);
+    }
+    // Silently ignore unknown addresses (no crash, no log spam)
+}
+
+//==============================================================================
+void MainComponent::mapOSCHitToEvent(const juce::OSCMessage& message)
+{
+    // Validate message format: /hit id(int32) x(float) y(float) energy(float) surface(int32)
+    if (message.size() != 5)
+    {
+        // Malformed message - silently discard
+        return;
+    }
+    
+    // Extract and validate arguments
+    if (!message[0].isInt32() || !message[1].isFloat32() || !message[2].isFloat32() || 
+        !message[3].isFloat32() || !message[4].isInt32())
+    {
+        // Wrong argument types - silently discard
+        return;
+    }
+    
+    // Extract values and clamp to valid ranges
+    int id = message[0].getInt32();
+    float x = juce::jlimit(0.0f, 1.0f, message[1].getFloat32());
+    float y = juce::jlimit(0.0f, 1.0f, message[2].getFloat32());
+    float energy = juce::jlimit(0.0f, 1.0f, message[3].getFloat32());
+    int surface = message[4].getInt32();
+    
+    // Map parameters according to "Coin Cascade" design
+    
+    // Amplitude: amp = energy^1.5 (micro-collisions → very low but audible)
+    float amplitude = std::pow(energy, 1.5f);
+    
+    // Brightness: lerp(0.3, 1.0, energy)
+    float brightness = 0.3f + (energy * 0.7f);
+    
+    // Pan: pan = (x * 2.0) - 1.0 (-1 = left, +1 = right)
+    // Note: Pan will be applied in VoiceManager if stereo support is added
+    // For now, we'll store it but not use it (mono output)
+    float pan = (x * 2.0f) - 1.0f;
+    (void)pan; // Suppress unused variable warning
+    
+    // Damping: lerp(0.2, 0.8, 1.0 - y)
+    // Upper screen → drier (lower damping), Lower screen → longer decay (higher damping)
+    float damping = 0.2f + ((1.0f - y) * 0.6f);
+    
+    // Base frequency: 200 + (y * 400) Hz (200-600 Hz range)
+    float baseFreq = 200.0f + (y * 400.0f);
+    
+    // Metalness: optional modulation based on surface
+    // Use current global metalness, optionally modulate by surface
+    float metalness = synthesisEngine.getMetalness();
+    // Optional: slight variation by surface (0-3)
+    if (surface >= 0 && surface <= 3)
+    {
+        // Small variation: ±0.1 based on surface
+        float surfaceMod = (surface - 1.5f) * 0.066f; // -0.1 to +0.1
+        metalness = juce::jlimit(0.0f, 1.0f, metalness + surfaceMod);
+    }
+    
+    // Trigger voice through RT-safe queue
+    synthesisEngine.triggerVoiceFromOSC(baseFreq, amplitude, damping, brightness, metalness);
+    
+    (void)id; // Suppress unused variable warning (id is for future use)
+}
+
+//==============================================================================
+void MainComponent::updateOSCState(const juce::OSCMessage& message)
+{
+    // Validate message format: /state activity(float) gesture(float) presence(float)
+    if (message.size() != 3)
+    {
+        // Malformed message - silently discard
+        return;
+    }
+    
+    // Extract and validate arguments
+    if (!message[0].isFloat32() || !message[1].isFloat32() || !message[2].isFloat32())
+    {
+        // Wrong argument types - silently discard
+        return;
+    }
+    
+    // Extract values and clamp to valid ranges
+    float activity = juce::jlimit(0.0f, 1.0f, message[0].getFloat32());
+    float gesture = juce::jlimit(0.0f, 1.0f, message[1].getFloat32());
+    float presence = juce::jlimit(0.0f, 1.0f, message[2].getFloat32());
+    
+    // Map global parameters (non-RT thread safe, but atomic)
+    // activity → reverbMix: reverbMix = activity * 0.5
+    globalReverbMix.store(activity * 0.5f);
+    
+    // gesture → drive: drive = gesture
+    globalDrive.store(gesture);
+    
+    // presence → master level (optional: gently reduce if presence < 0.5)
+    globalPresence.store(presence);
+    
+    // Apply global parameters to synthesis engine
+    synthesisEngine.setReverbMix(globalReverbMix.load());
+    synthesisEngine.setDrive(globalDrive.load());
+    
+    // Optional: Apply presence to master level (could be implemented in SynthesisEngine)
+    // For now, we store it but don't apply it
 }
