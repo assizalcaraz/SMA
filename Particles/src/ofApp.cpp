@@ -288,9 +288,6 @@ void ofApp::applyGestureForce() {
     // Velocidad normalizada (0..1)
     float speed = ofClamp(vel_magnitude / speed_ref, 0.0f, 1.0f);
     
-    // Radio de contacto directo (muy pequeño, solo partículas que tocan el mouse)
-    float contact_radius = 20.0f; // Radio de contacto directo en pixels
-    
     // Aplicar fuerza a cada partícula
     float dt = ofGetLastFrameTime();
     if (dt <= 0.0f) dt = 0.016f;
@@ -301,11 +298,6 @@ void ofApp::applyGestureForce() {
         ofVec2f diff = particlePosPixels - mousePosPixels;
         float r = diff.length();
         
-        // Solo aplicar fuerza si hay contacto directo (partícula muy cercana al mouse)
-        if (r > contact_radius) {
-            continue; // No hay contacto, saltar esta partícula
-        }
-        
         // Calcular dirección radial desde mouse hacia partícula (push radial)
         // Esto empuja las partículas alejándolas del mouse
         ofVec2f push_dir;
@@ -315,13 +307,17 @@ void ofApp::applyGestureForce() {
             continue; // Partícula exactamente en el mouse, saltar
         }
         
-        // Influencia por distancia (más fuerte cuando está más cerca)
-        // Usar función que decae rápidamente con la distancia
-        float w = 1.0f - (r / contact_radius); // Lineal de 1.0 (contacto) a 0.0 (radio máximo)
-        w = ofClamp(w, 0.0f, 1.0f);
+        // Influencia gaussiana por distancia: w = exp(-(r²)/(2*sigma²))
+        // Usa sigma como radio de influencia (más grande = más alcance)
+        float w = exp(-(r * r) / (2.0f * sigma * sigma));
+        
+        // Solo aplicar fuerza si la influencia es significativa (evitar cálculos innecesarios)
+        if (w < 0.01f) {
+            continue; // Influencia demasiado pequeña, saltar
+        }
         
         // Fuerza de gesto: push radial que empuja partículas alejándolas del mouse
-        // La fuerza es proporcional a la velocidad del mouse y la cercanía
+        // La fuerza es proporcional a la velocidad del mouse y la cercanía (gaussiana)
         ofVec2f F_gesture = k_gesture * w * speed * push_dir;
         
         // Aplicar fuerza directamente a la velocidad (impulso)
