@@ -282,12 +282,14 @@ void ofApp::applyGestureForce() {
     // Posición del mouse en pixels
     ofVec2f mousePosPixels = ofVec2f(mouse.pos_smooth.x * winWidth, mouse.pos_smooth.y * winHeight);
     
-    // Normalizar velocidad y calcular dirección
+    // Normalizar velocidad
     float vel_magnitude = mouse.vel.length();
-    ofVec2f dir = mouse.vel.normalized();
     
     // Velocidad normalizada (0..1)
     float speed = ofClamp(vel_magnitude / speed_ref, 0.0f, 1.0f);
+    
+    // Radio de contacto directo (muy pequeño, solo partículas que tocan el mouse)
+    float contact_radius = 20.0f; // Radio de contacto directo en pixels
     
     // Aplicar fuerza a cada partícula
     float dt = ofGetLastFrameTime();
@@ -299,11 +301,28 @@ void ofApp::applyGestureForce() {
         ofVec2f diff = particlePosPixels - mousePosPixels;
         float r = diff.length();
         
-        // Influencia gaussiana: w = exp(-(r^2)/(2*sigma^2))
-        float w = exp(-(r * r) / (2.0f * sigma * sigma));
+        // Solo aplicar fuerza si hay contacto directo (partícula muy cercana al mouse)
+        if (r > contact_radius) {
+            continue; // No hay contacto, saltar esta partícula
+        }
         
-        // Fuerza de gesto: F_gesture = k_gesture * w * speed * dir
-        ofVec2f F_gesture = k_gesture * w * speed * dir;
+        // Calcular dirección radial desde mouse hacia partícula (push radial)
+        // Esto empuja las partículas alejándolas del mouse
+        ofVec2f push_dir;
+        if (r > 0.001f) {
+            push_dir = diff.normalized(); // Dirección desde mouse hacia partícula
+        } else {
+            continue; // Partícula exactamente en el mouse, saltar
+        }
+        
+        // Influencia por distancia (más fuerte cuando está más cerca)
+        // Usar función que decae rápidamente con la distancia
+        float w = 1.0f - (r / contact_radius); // Lineal de 1.0 (contacto) a 0.0 (radio máximo)
+        w = ofClamp(w, 0.0f, 1.0f);
+        
+        // Fuerza de gesto: push radial que empuja partículas alejándolas del mouse
+        // La fuerza es proporcional a la velocidad del mouse y la cercanía
+        ofVec2f F_gesture = k_gesture * w * speed * push_dir;
         
         // Aplicar fuerza directamente a la velocidad (impulso)
         p.vel += (F_gesture / p.mass) * dt;
