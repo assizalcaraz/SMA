@@ -2,6 +2,7 @@
 
 #include "ofMain.h"
 #include "ofxGui.h"
+#include "ofxOsc.h"
 #include "Particle.h"
 #include <vector>
 
@@ -94,6 +95,14 @@ class ofApp : public ofBaseApp{
 		std::vector<HitEvent> pending_hits;    // Eventos generados en este frame
 		std::vector<HitEvent> validated_hits;  // Eventos validados (para futuro OSC)
 		
+		// OSC
+		ofxOscSender oscSender;
+		std::string oscHost;                   // Host destino (default: 127.0.0.1)
+		int oscPort;                           // Puerto destino (default: 9000)
+		bool oscEnabled;                       // Habilitar/deshabilitar OSC
+		float stateSendInterval;              // Intervalo para enviar /state (segundos)
+		float stateSendTimer;                 // Timer para /state
+		
 		// GUI
 		ofxPanel gui;
 		ofxIntSlider nParticlesSlider;
@@ -127,4 +136,12 @@ class ofApp : public ofBaseApp{
 		bool canEmitHit();
 		void consumeToken();
 		void processPendingHits();
+		
+		// Funciones de OSC
+		void setupOSC();
+		void sendHitEvent(const HitEvent& event);
+		void sendStateMessage();
+		float calculateActivity();            // Calcular actividad normalizada (0..1)
+		float calculateGesture();              // Calcular energía de gesto (0..1)
+		float calculatePresence();             // Calcular confianza tracking (0..1)
 };

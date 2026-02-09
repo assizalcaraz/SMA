@@ -79,6 +79,9 @@ void ofApp::setup(){
     
     // Inicializar partículas
     initializeParticles(initialN);
+    
+    // Configurar OSC
+    setupOSC();
 }
 
 //--------------------------------------------------------------
@@ -146,6 +149,20 @@ void ofApp::update(){
     
     // Procesar eventos pendientes con rate limiting
     processPendingHits();
+    
+    // Enviar eventos OSC validados
+    if (oscEnabled) {
+        for (const auto& event : validated_hits) {
+            sendHitEvent(event);
+        }
+        
+        // Enviar mensaje /state periódicamente (10 Hz durante actividad)
+        stateSendTimer += dt;
+        if (stateSendTimer >= stateSendInterval) {
+            sendStateMessage();
+            stateSendTimer = 0.0f;
+        }
+    }
     
     // Actualizar contadores de debug
     time_accumulator += dt;
@@ -302,7 +319,7 @@ void ofApp::applyGestureForce() {
         // Esto empuja las partículas alejándolas del mouse
         ofVec2f push_dir;
         if (r > 0.001f) {
-            push_dir = diff.normalized(); // Dirección desde mouse hacia partícula
+            push_dir = diff.getNormalized(); // Dirección desde mouse hacia partícula
         } else {
             continue; // Partícula exactamente en el mouse, saltar
         }
@@ -483,12 +500,17 @@ void ofApp::drawDebugOverlay() {
     ss << "Tokens: " << rate_limiter.tokens << endl;
     ss << "Pending: " << pending_hits.size() << endl;
     ss << "Validated: " << validated_hits.size() << endl;
+    ss << "---" << endl;
+    ss << "OSC: " << (oscEnabled ? "ON" : "OFF") << endl;
+    if (oscEnabled) {
+        ss << "OSC: " << oscHost << ":" << oscPort << endl;
+    }
     
     // Dibujar en la parte inferior izquierda para no superponerse con la GUI
     // La GUI típicamente está en la esquina superior derecha
     float x = 20.0f;
     float lineHeight = 15.0f; // Altura aproximada de cada línea
-    int lineCount = 13; // Número de líneas en el overlay
+    int lineCount = 15; // Número de líneas en el overlay (actualizado con OSC)
     float y = ofGetHeight() - (lineCount * lineHeight) - 20.0f;
     
     // Asegurar que no se salga de la pantalla
@@ -560,4 +582,102 @@ void ofApp::gotMessage(ofMessage msg){
 //--------------------------------------------------------------
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
+}
+
+//--------------------------------------------------------------
+void ofApp::setupOSC() {
+    // Configuración por defecto
+    oscHost = "127.0.0.1";
+    oscPort = 9000;
+    oscEnabled = true;
+    stateSendInterval = 0.1f;  // 10 Hz
+    stateSendTimer = 0.0f;
+    
+    // Inicializar sender OSC
+    oscSender.setup(oscHost, oscPort);
+    
+    ofLogNotice("ofApp") << "OSC configurado: " << oscHost << ":" << oscPort;
+}
+
+//--------------------------------------------------------------
+void ofApp::sendHitEvent(const HitEvent& event) {
+    if (!oscEnabled) {
+        return;
+    }
+    
+    ofxOscMessage msg;
+    msg.setAddress("/hit");
+    msg.addIntArg(event.id);           // int32 id
+    msg.addFloatArg(event.x);          // float x (0..1)
+    msg.addFloatArg(event.y);          // float y (0..1)
+    msg.addFloatArg(event.energy);     // float energy (0..1)
+    msg.addIntArg(event.surface);      // int32 surface (0=L, 1=R, 2=T, 3=B, -1=N/A)
+    
+    oscSender.sendMessage(msg, false);
+    
+    // Debug opcional (comentado para no saturar logs)
+    // ofLogVerbose("ofApp") << "OSC /hit: id=" << event.id 
+    //                       << " x=" << event.x 
+    //                       << " y=" << event.y 
+    //                       << " energy=" << event.energy 
+    //                       << " surface=" << event.surface;
+}
+
+//--------------------------------------------------------------
+void ofApp::sendStateMessage() {
+    if (!oscEnabled) {
+        return;
+    }
+    
+    // Solo enviar si hay actividad (evitar spam cuando no hay hits)
+    float activity = calculateActivity();
+    if (activity < 0.001f) {
+        return; // Sin actividad, no enviar
+    }
+    
+    ofxOscMessage msg;
+    msg.setAddress("/state");
+    msg.addFloatArg(activity);         // float activity (0..1)
+    msg.addFloatArg(calculateGesture()); // float gesture (0..1)
+    msg.addFloatArg(calculatePresence()); // float presence (0..1)
+    
+    oscSender.sendMessage(msg, false);
+    
+    // Debug opcional
+    // ofLogVerbose("ofApp") << "OSC /state: activity=" << activity;
+}
+
+//--------------------------------------------------------------
+float ofApp::calculateActivity() {
+    // Normalizar hits_per_second al rango 0..1
+    // Usar max_hits_per_second como referencia máxima
+    if (max_hits_per_second <= 0.0f) {
+        return 0.0f;
+    }
+    return ofClamp(hits_per_second / max_hits_per_second, 0.0f, 1.0f);
+}
+
+//--------------------------------------------------------------
+float ofApp::calculateGesture() {
+    // Para mouse input, usar velocidad normalizada como proxy de energía de gesto
+    // En el futuro, con MediaPipe, esto sería energía agregada de gestos detectados
+    if (!mouse.active) {
+        return 0.0f;
+    }
+    
+    float vel_magnitude = mouse.vel.length();
+    float speed = ofClamp(vel_magnitude / speed_ref, 0.0f, 1.0f);
+    
+    // Suavizar para evitar cambios bruscos
+    static float gesture_smooth = 0.0f;
+    gesture_smooth = gesture_smooth * 0.9f + speed * 0.1f;
+    
+    return gesture_smooth;
+}
+
+//--------------------------------------------------------------
+float ofApp::calculatePresence() {
+    // Para mouse input, presence = 1.0 si está activo, 0.0 si no
+    // En el futuro, con MediaPipe, esto sería confianza del tracking
+    return mouse.active ? 1.0f : 0.0f;
 }

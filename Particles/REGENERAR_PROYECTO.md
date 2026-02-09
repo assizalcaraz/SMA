@@ -1,6 +1,6 @@
 # Instrucciones para regenerar el proyecto Particles
 
-El proyecto Xcode tiene referencias persistentes a addons que no se usan (`ofxOpenCv`, `ofxOsc`). La mejor solución es regenerar el proyecto usando el Project Generator de openFrameworks.
+El proyecto Xcode necesita regenerarse cuando se agregan nuevos addons. Después de agregar `ofxOsc` para la Fase 5, es necesario regenerar el proyecto usando el Project Generator de openFrameworks.
 
 ## Pasos para regenerar:
 
@@ -11,7 +11,7 @@ El proyecto Xcode tiene referencias persistentes a addons que no se usan (`ofxOp
 2. **Configurar el proyecto:**
    - **Project Path:** `/Users/joseassizalcarazbaxter/Documents/UNA/POSGRADO/2025_2/Sistema Modular Audiovisual/Particles`
    - **Project Name:** `Particles`
-   - **Addons:** Seleccionar SOLO `ofxGui` (desmarcar todos los demás)
+   - **Addons:** Seleccionar `ofxGui` y `ofxOsc` (marcar ambos)
 
 3. **Regenerar:**
    - Click en "Update" o "Generate"
