@@ -1,6 +1,6 @@
 # Plan de Implementación — Sistema Modular Audiovisual
 
-Plan detallado de desarrollo basado en la especificación técnica (`spec.md`) y el roadmap recomendado.
+Plan detallado de desarrollo basado en la especificación técnica (`spec.md` en este mismo directorio) y el roadmap recomendado.
 
 **Estrategia de implementación:** Priorizar el loop modular completo (partículas → colisiones → OSC → JUCE) antes de integrar MediaPipe. MediaPipe se trata como "swap de input" (mouse primero, MediaPipe después).
 
@@ -18,13 +18,14 @@ Sistema Modular Audiovisual/
 │   ├── Source/         # Código fuente
 │   └── JuceLibraryCode/ # Librerías JUCE
 ├── docs/               # Documentación
-│   ├── spec.md         # Especificación técnica completa
-│   ├── readme.md       # README principal
-│   └── api-osc.md      # Documentación del contrato OSC
+├── Docs/               # Documentación completa
+│   ├── specs/          # Especificaciones técnicas
+│   │   ├── spec.md     # Especificación técnica completa
+│   │   └── PLAN_IMPLEMENTACION.md  # Este archivo
+│   └── ...
 ├── scripts/            # Scripts de utilidad
 │   └── test-osc.py     # Script para probar OSC sin oF
-├── tests/              # Tests de integración
-└── PLAN_IMPLEMENTACION.md  # Este archivo
+└── tests/              # Tests de integración
 ```
 
 ---
@@ -708,7 +709,7 @@ Sistema Modular Audiovisual/
 
 **Objetivo:** Completar documentación y preparar materiales de presentación.
 
-**Referencia:** `spec.md` sección 9 y `Trabajo Final ISTR.md`
+**Referencia:** `spec.md` sección 9 y `Docs/requisitos/Trabajo Final ISTR.md`
 
 ### Tareas
 
@@ -733,7 +734,7 @@ Sistema Modular Audiovisual/
   - [ ] Captura de pantalla de App A
   - [ ] Muestra sistema de partículas
   - [ ] Muestra respuesta a gestos (o mouse si MediaPipe no está)
-  - [ ] Duración: según requisitos (ver `Trabajo Final ISTR.md`)
+  - [ ] Duración: según requisitos (ver `Docs/requisitos/Trabajo Final ISTR.md`)
 - [ ] Explicación (máx. 1 minuto al inicio del video):
   - [ ] Qué es el sistema
   - [ ] Cómo funciona

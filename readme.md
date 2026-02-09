@@ -6,11 +6,14 @@ Sistema audiovisual en tiempo real que integra tracking corporal con síntesis d
 
 Este sistema permite generar sonido en tiempo real a partir del movimiento corporal del usuario. Utiliza tracking de manos o pose corporal mediante MediaPipe para controlar un sistema de partículas físicas. Las colisiones de las partículas con los bordes generan eventos sonoros que son procesados por un sintetizador en JUCE, creando un timbre metálico característico.
 
-**Documentación técnica completa:** Ver [`spec.md`](spec.md) para detalles de implementación, arquitectura y especificaciones técnicas.
+**Documentación técnica completa:** Ver [`Docs/specs/spec.md`](Docs/specs/spec.md) para detalles de implementación, arquitectura y especificaciones técnicas.
+
+**Documentación organizada:** Ver [`Docs/README.md`](Docs/README.md) para índice completo y rutas de aprendizaje.
 
 **Índice de documentación:** Ver [`Docs/index.md`](Docs/index.md) para mapeo completo de código a documentación.
 
 **Documentación del módulo Particles:**
+- [`Docs/Particles/README.md`](Docs/Particles/README.md) - Índice del módulo
 - [`Docs/Particles/readme.md`](Docs/Particles/readme.md) - Descripción general
 - [`Docs/Particles/manual.md`](Docs/Particles/manual.md) - Manual de usuario (parámetros)
 - [`Docs/Particles/spec.md`](Docs/Particles/spec.md) - Especificación técnica
@@ -126,14 +129,15 @@ Sistema Modular Audiovisual/
 ├── app-juce/           # App B: JUCE
 │   ├── Source/         # Código fuente
 │   └── JuceLibraryCode/ # Librerías JUCE
-├── docs/               # Documentación
-│   ├── spec.md         # Especificación técnica completa
-│   ├── readme.md       # Este archivo
-│   └── api-osc.md      # Documentación detallada del contrato OSC
+├── Docs/               # Documentación completa
+│   ├── README.md       # Índice de documentación
+│   ├── specs/          # Especificaciones técnicas
+│   │   ├── spec.md     # Especificación técnica completa
+│   │   └── PLAN_IMPLEMENTACION.md  # Plan de desarrollo
+│   └── ...
 ├── scripts/            # Scripts de utilidad
 │   └── test-osc.py     # Script para probar OSC sin oF
-├── tests/              # Tests de integración
-└── PLAN_IMPLEMENTACION.md  # Plan detallado de desarrollo
+└── tests/              # Tests de integración
 ```
 
 ---
@@ -273,7 +277,7 @@ El proyecto puede presentarse de dos maneras:
 
 🟢 **Completado:**
 - Arquitectura del sistema definida
-- Especificación técnica completa (`spec.md`)
+- Especificación técnica completa (`Docs/specs/spec.md`)
 - Contrato OSC establecido
 - Plan de implementación detallado
 
@@ -290,7 +294,7 @@ El proyecto puede presentarse de dos maneras:
 
 ### Roadmap de desarrollo
 
-Ver [`PLAN_IMPLEMENTACION.md`](PLAN_IMPLEMENTACION.md) para el plan detallado de desarrollo con fases y tareas específicas.
+Ver [`Docs/specs/PLAN_IMPLEMENTACION.md`](Docs/specs/PLAN_IMPLEMENTACION.md) para el plan detallado de desarrollo con fases y tareas específicas.
 
 **Estrategia de implementación:** Priorizar el loop modular completo (partículas → colisiones → OSC → JUCE) antes de integrar MediaPipe. MediaPipe se trata como "swap de input" (mouse primero, MediaPipe después).
 
@@ -321,11 +325,18 @@ Posgrado de especialización en sonido para las artes digitales
 
 ---
 
-## Referencias
+## Referencias Rápidas
 
-- [Especificación técnica completa](spec.md)
-- [Documentación del contrato OSC](docs/api-osc.md)
-- [Plan de implementación](PLAN_IMPLEMENTACION.md)
+- **Documentación completa**: [Docs/README.md](Docs/README.md) — Índice y rutas de aprendizaje
+- **Estado del proyecto**: [Docs/overview/ESTADO_ACTUAL.md](Docs/overview/ESTADO_ACTUAL.md) — Qué está implementado
+- **Especificación técnica**: [Docs/specs/spec.md](Docs/specs/spec.md) — Arquitectura y diseño completo
+- **Plan de desarrollo**: [Docs/specs/PLAN_IMPLEMENTACION.md](Docs/specs/PLAN_IMPLEMENTACION.md) — Fases y tareas
+- **Contrato OSC**: [Docs/api-osc.md](Docs/api-osc.md) — Contrato de mensajes
+- **Documentación de Particles**: [Docs/Particles/](Docs/Particles/) — Módulo de partículas
+- **Mapeo código → docs**: [Docs/index.md](Docs/index.md) — Índice de archivos
+
+## Referencias Externas
+
 - [openFrameworks](https://openframeworks.cc/)
 - [JUCE](https://juce.com/)
 - [MediaPipe](https://mediapipe.dev/)
