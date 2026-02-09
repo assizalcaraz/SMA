@@ -141,7 +141,7 @@ void MainComponent::paint (juce::Graphics& g)
     // Título
     g.setColour (juce::Colours::white);
     g.setFont (24.0f);
-    g.drawText ("Modal Synthesizer - Coin Cascade", 
+    g.drawText ("PAS-1-SYNTH", 
                 getLocalBounds().removeFromTop(40).reduced(10),
                 juce::Justification::centred, false);
 }

@@ -56,6 +56,10 @@ public:
     /** Trigger manual de una voz (para testing sin OSC) - RT-safe: escribe a cola */
     void triggerTestVoice();
 
+    /** Trigger voz desde OSC - RT-safe: escribe a cola lock-free */
+    void triggerVoiceFromOSC(float baseFreq, float amplitude, 
+                             float damping, float brightness, float metalness);
+
     /** Obtiene el número de voces activas */
     int getActiveVoiceCount() const;
 
@@ -99,6 +103,13 @@ private:
     // Medición de nivel de salida
     float outputLevel = 0.0f;
     float outputLevelDecay = 0.999f; // Decay para RMS
+    
+    // Parámetros previos para detectar cambios (RT-safe: solo lectura desde audio thread)
+    float prevMetalness = 0.5f;
+    float prevBrightness = 0.5f;
+    float prevDamping = 0.5f;
+    int parameterUpdateCounter = 0; // Contador para actualizar periódicamente
+    static constexpr int PARAMETER_UPDATE_INTERVAL = 4; // Actualizar cada 4 bloques (~10ms a 44.1kHz/512)
     
     //==============================================================================
     /** Procesa eventos de la cola lock-free (llamado desde audio thread) */

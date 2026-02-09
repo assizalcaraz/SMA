@@ -59,11 +59,12 @@ float ModalVoice::renderNextSample()
     if (envelope <= 0.0001f && !isExciting)
         return 0.0f;
     
-    // Generar excitación si aún está activa - optimizado
+    // Generar excitación si aún está activa - optimizado RT-safe
     float excitation = 0.0f;
     if (isExciting && excitationPosition < excitationLength)
     {
-        // Pre-calcular factor de envolvente una vez
+        // Calcular envolvente (optimizado: evitar división cuando sea posible)
+        // Para longitudes típicas (64-128 samples), la división es aceptable
         float envFactor = 1.0f - ((float)excitationPosition / (float)excitationLength);
         excitation = excitationBuffer[excitationPosition] * envFactor;
         excitationPosition++;
@@ -74,8 +75,9 @@ float ModalVoice::renderNextSample()
         }
     }
     
-    // RT-SAFE: Procesar modos (desenrollado para 2 modos)
-    float output = modes[0].process(excitation) + modes[1].process(excitation);
+    // RT-SAFE: Procesar modos (optimizado para 4 modos)
+    float output = modes[0].process(excitation) + modes[1].process(excitation) + 
+                   modes[2].process(excitation) + modes[3].process(excitation);
     
     // Aplicar envolvente de decaimiento global (optimizado: combinar multiplicaciones)
     float envAmp = envelope * currentAmplitude;
@@ -141,17 +143,33 @@ void ModalVoice::updateFilterCoefficients()
 //==============================================================================
 void ModalVoice::generateExcitation()
 {
-    // Generar noise burst más corto para mejor rendimiento (3-5ms)
-    float durationMs = 5.0f; // Duración reducida a 5ms
+    // Generar excitación con más contenido de alta frecuencia para timbre metálico
+    // Duración variable: 3-8ms (más corta = más aguda, más metálica)
+    float durationMs = 4.0f + random.nextFloat() * 4.0f; // 4-8ms variable
     excitationLength = (int)(durationMs * 0.001f * currentSampleRate);
-    excitationLength = juce::jlimit(1, 128, excitationLength); // Reducido a 128 samples máximo
+    excitationLength = juce::jlimit(1, 128, excitationLength);
     
-    // Generar ruido blanco (optimizado: usar operaciones más rápidas)
+    // Generar ruido blanco con énfasis en altas frecuencias
+    // Usar diferenciación para crear click más agudo (impulso diferenciado)
     const float scale = 2.0f;
     const float offset = -1.0f;
+    float prevSample = 0.0f;
+    
     for (int i = 0; i < excitationLength; i++)
     {
-        excitationBuffer[i] = random.nextFloat() * scale + offset; // -1 a 1
+        // Generar ruido blanco
+        float noise = random.nextFloat() * scale + offset; // -1 a 1
+        
+        // Aplicar diferenciación (high-pass implícito) para más contenido de alta frecuencia
+        // Esto crea un click más agudo y metálico
+        float diff = noise - prevSample;
+        prevSample = noise;
+        
+        // Aplicar envolvente exponencial para suavizar el inicio
+        float env = 1.0f - ((float)i / (float)excitationLength);
+        env = env * env; // Envolvente cuadrática para más suavidad
+        
+        excitationBuffer[i] = diff * env * 1.5f; // Amplificar ligeramente para compensar diferenciación
     }
 }
 
@@ -183,11 +201,13 @@ float ModalVoice::calculateModeGain(int modeIndex) const
 //==============================================================================
 float ModalVoice::calculateModeQ(int modeIndex) const
 {
-    // Q más alto = resonancia más estrecha y decay más largo
+    // Q más alto = resonancia más estrecha y decay más largo = más "ringing" metálico
     // Modos más altos típicamente tienen Q más alto (más "ringing")
-    float baseQ = 10.0f + (float)modeIndex * 5.0f; // Q de 10 a 25 (reducido para 4 modos)
+    // Base Q aumentado para timbre metálico: 25-60 (en lugar de 10-25)
+    float baseQ = 25.0f + (float)modeIndex * 11.67f; // Q de 25 a 60 para 4 modos
     
     // Damping afecta el Q: más damping = Q más bajo = decay más rápido
     // Pero también afectamos el decay directamente, así que Q puede ser más constante
-    return baseQ * (1.0f - currentDamping * 0.3f); // Reducir Q hasta 30% con damping máximo
+    // Reducir Q hasta 40% con damping máximo (menos reducción que antes para mantener ringing)
+    return baseQ * (1.0f - currentDamping * 0.4f);
 }

@@ -251,3 +251,31 @@ void VoiceManager::updateVoiceTime(int voiceIndex)
         voiceTriggerTime[voiceIndex] = currentTime;
     }
 }
+
+//==============================================================================
+void VoiceManager::updateGlobalParameters(float metalness, float brightness, float damping)
+{
+    // RT-SAFE: Actualizar parámetros globales en todas las voces activas
+    // Mantener frecuencia base y amplitud actuales de cada voz
+    if (maxVoices == 0 || voices.size() == 0)
+        return;
+    
+    int searchLimit = juce::jmin(maxVoices, voices.size());
+    for (int i = 0; i < searchLimit; i++)
+    {
+        auto* voice = voices.getUnchecked(i);
+        
+        // Solo actualizar voces activas
+        if (voice->isActive())
+        {
+            // Obtener parámetros actuales de la voz y actualizar solo los globales
+            voice->setParameters(
+                voice->getCurrentBaseFreq(),
+                voice->getCurrentAmplitude(),
+                damping,
+                brightness,
+                metalness
+            );
+        }
+    }
+}

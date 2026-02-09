@@ -17,6 +17,12 @@ void SynthesisEngine::prepare(double sampleRate)
     // Decay de ~100ms
     outputLevelDecay = std::exp(-1.0f / (0.1f * (float)sampleRate));
     
+    // Inicializar valores previos de parámetros globales
+    prevMetalness = metalness.load();
+    prevBrightness = brightness.load();
+    prevDamping = damping.load();
+    parameterUpdateCounter = 0;
+    
     // DIAGNOSTIC: For stability testing, use:
     // - Buffer size: 1024 samples
     // - Sample rate: 48kHz  
@@ -29,6 +35,32 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
 {
     // RT-SAFE: Procesar eventos de la cola lock-free primero (máximo MAX_HITS_PER_BLOCK)
     processEventQueue();
+    
+    // RT-SAFE: Actualizar parámetros globales en voces activas periódicamente
+    // Actualizar cada N bloques para eficiencia (evitar actualizar en cada bloque)
+    parameterUpdateCounter++;
+    if (parameterUpdateCounter >= PARAMETER_UPDATE_INTERVAL)
+    {
+        parameterUpdateCounter = 0;
+        
+        // Leer parámetros globales (atomic, thread-safe)
+        float currentMetalness = metalness.load();
+        float currentBrightness = brightness.load();
+        float currentDamping = damping.load();
+        
+        // Actualizar solo si cambiaron (optimización)
+        if (std::abs(currentMetalness - prevMetalness) > 0.001f ||
+            std::abs(currentBrightness - prevBrightness) > 0.001f ||
+            std::abs(currentDamping - prevDamping) > 0.001f)
+        {
+            voiceManager.updateGlobalParameters(currentMetalness, currentBrightness, currentDamping);
+            
+            // Actualizar valores previos
+            prevMetalness = currentMetalness;
+            prevBrightness = currentBrightness;
+            prevDamping = currentDamping;
+        }
+    }
     
     // Renderizar voces
     voiceManager.renderNextBlock(buffer, startSample, numSamples);
@@ -170,6 +202,30 @@ void SynthesisEngine::triggerTestVoice()
 }
 
 //==============================================================================
+void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude, 
+                                         float damping, float brightness, float metalness)
+{
+    // RT-SAFE: Escribir evento a cola lock-free (mismo path que triggerTestVoice)
+    // El audio thread procesará el evento en el próximo renderNextBlock()
+    HitEvent event;
+    event.baseFreq = baseFreq;
+    event.amplitude = amplitude;
+    event.damping = damping;
+    event.brightness = brightness;
+    event.metalness = metalness;
+    
+    int start1, size1, start2, size2;
+    eventFifo.prepareToWrite(1, start1, size1, start2, size2);
+    
+    if (size1 > 0)
+    {
+        eventQueue[start1] = event;
+        eventFifo.finishedWrite(size1);
+    }
+    // Si la cola está llena, el evento se descarta silenciosamente (protección contra overflow)
+}
+
+//==============================================================================
 int SynthesisEngine::getActiveVoiceCount() const
 {
     return voiceManager.getActiveVoiceCount();
@@ -217,10 +273,19 @@ float SynthesisEngine::applyLimiter(float sample)
 void SynthesisEngine::processEventQueue()
 {
     // RT-SAFE: Drenar eventos de la cola lock-free (máximo MAX_HITS_PER_BLOCK por bloque)
-    int numToRead = juce::jmin(MAX_HITS_PER_BLOCK, eventFifo.getNumReady());
-    
-    if (numToRead == 0)
+    // Limitar aún más bajo carga para evitar sobrecarga del audio thread
+    int available = eventFifo.getNumReady();
+    if (available == 0)
         return;
+    
+    // Reducir procesamiento si hay muchos eventos pendientes (protección contra sobrecarga)
+    int numToRead = juce::jmin(MAX_HITS_PER_BLOCK, available);
+    
+    // Si hay demasiados eventos acumulados, procesar menos para evitar sobrecarga
+    if (available > MAX_HITS_PER_BLOCK * 2)
+    {
+        numToRead = MAX_HITS_PER_BLOCK / 2; // Procesar la mitad para dar tiempo al audio thread
+    }
     
     int start1, size1, start2, size2;
     eventFifo.prepareToRead(numToRead, start1, size1, start2, size2);

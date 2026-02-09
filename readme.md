@@ -282,9 +282,7 @@ El proyecto puede presentarse de dos maneras:
 - Plan de implementación detallado
 
 🔧 **En desarrollo:**
-- Integración OSC en curso
-- Sistema de partículas (App A)
-- Sintetizador modal (App B)
+- Receptor OSC y mapeo (App B - Fase 7)
 
 📋 **Pendiente:**
 - Implementación completa de tracking MediaPipe
@@ -299,16 +297,16 @@ Ver [`Docs/specs/PLAN_IMPLEMENTACION.md`](Docs/specs/PLAN_IMPLEMENTACION.md) par
 **Estrategia de implementación:** Priorizar el loop modular completo (partículas → colisiones → OSC → JUCE) antes de integrar MediaPipe. MediaPipe se trata como "swap de input" (mouse primero, MediaPipe después).
 
 **Fases principales:**
-1. Setup inicial del proyecto
-2. Sistema de partículas básico (oF)
-3. Input básico (Mouse) — validación rápida de arquitectura
-4. Colisiones y eventos (+ rate limiting global)
-5. Comunicación OSC (adelantada para validar loop modular)
-6. Sintetizador básico (JUCE Standalone) — **Standalone = entrega principal**
-7. Receptor OSC y mapeo (textura "coin cascade")
-8. Calibración y ajuste conjunto
-9. Documentación y demo
-10. MediaPipe (opcional/tardía, solo si el sistema ya funciona)
+1. ✅ Setup inicial del proyecto
+2. ✅ Sistema de partículas básico (oF)
+3. ✅ Input básico (Mouse) — validación rápida de arquitectura
+4. ✅ Colisiones y eventos (+ rate limiting global)
+5. ✅ Comunicación OSC (adelantada para validar loop modular)
+6. ✅ Sintetizador básico (JUCE Standalone) — **COMPLETADA** — **Standalone = entrega principal**
+7. ⏳ Receptor OSC y mapeo (textura "coin cascade")
+8. ⏳ Calibración y ajuste conjunto
+9. ⏳ Documentación y demo
+10. ⏳ MediaPipe (opcional/tardía, solo si el sistema ya funciona)
 
 ---
 

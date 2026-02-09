@@ -36,23 +36,33 @@ public:
     /** Obtiene la amplitud residual actual (para voice stealing) */
     float getResidualAmplitude() const;
 
+    /** Obtiene la frecuencia base actual */
+    float getCurrentBaseFreq() const { return currentBaseFreq; }
+
+    /** Obtiene la amplitud actual */
+    float getCurrentAmplitude() const { return currentAmplitude; }
+
     /** Resetea la voz completamente */
     void reset();
 
 private:
     //==============================================================================
-    static constexpr int NUM_MODES = 2; // Número de modos resonantes (reducido a 2 para estabilidad RT)
+    static constexpr int NUM_MODES = 4; // Número de modos resonantes (aumentado para timbre metálico más rico)
     
     // Factores inarmónicos para cada modo (valores típicos para timbre metálico)
     static constexpr float INHARMONIC_FACTORS[NUM_MODES] = {
         1.0f,      // Modo fundamental
-        2.76f      // Segundo modo inarmónico
+        2.76f,     // Segundo modo inarmónico
+        5.40f,     // Tercer modo inarmónico
+        8.93f      // Cuarto modo inarmónico
     };
 
     // Ganancias relativas por modo (para brightness)
     static constexpr float MODE_GAINS[NUM_MODES] = {
         1.0f,      // Fundamental más fuerte
-        0.7f       // Segundo modo
+        0.8f,      // Segundo modo
+        0.9f,      // Tercer modo (medio-alto, más brillante)
+        0.7f       // Cuarto modo (alto)
     };
 
     //==============================================================================

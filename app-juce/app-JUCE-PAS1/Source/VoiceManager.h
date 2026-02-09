@@ -40,6 +40,9 @@ public:
     /** Resetea todas las voces */
     void resetAll();
 
+    /** Actualiza parámetros globales en todas las voces activas (RT-safe) */
+    void updateGlobalParameters(float metalness, float brightness, float damping);
+
 private:
     //==============================================================================
     static constexpr int DEFAULT_MAX_VOICES = 8;
