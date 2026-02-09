@@ -93,6 +93,310 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 
 ---
 
+## Requisitos del Sistema
+
+### Software
+
+- **openFrameworks** 0.12.1 instalado
+- **Xcode** (macOS) o **Visual Studio** (Windows) o **Code::Blocks** (Linux)
+- **CMake** (opcional, para regenerar proyecto)
+
+### Hardware
+
+- **CPU**: Mínimo 2.0 GHz (recomendado 2.5+ GHz)
+- **RAM**: Mínimo 4 GB (recomendado 8+ GB)
+- **GPU**: OpenGL 2.1+ compatible
+- **Resolución**: Ventana 1024x768 (configurable)
+
+### Rendimiento Esperado
+
+- **N=2000 partículas**: ≥ 45 FPS
+- **N=5000 partículas**: ≥ 30 FPS
+- **N=8000 partículas**: ≥ 20 FPS (puede variar según hardware)
+
+---
+
+## Compilación y Ejecución
+
+### Compilar con Xcode (macOS)
+
+1. **Abrir el proyecto:**
+   ```bash
+   cd Particles
+   open Particles.xcodeproj
+   ```
+
+2. **Seleccionar esquema:**
+   - `Particles Debug` (desarrollo)
+   - `Particles Release` (optimizado)
+
+3. **Compilar:**
+   - `Cmd + B` o `Product > Build`
+
+4. **Ejecutar:**
+   - `Cmd + R` o `Product > Run`
+
+### Compilar con Makefile (Linux/macOS)
+
+1. **Configurar OF_ROOT** (si no está configurado):
+   ```bash
+   export OF_ROOT=/ruta/a/of_v0.12.1
+   ```
+
+2. **Compilar:**
+   ```bash
+   cd Particles
+   make
+   ```
+
+3. **Ejecutar:**
+   ```bash
+   make run
+   # o directamente:
+   bin/ParticlesDebug
+   ```
+
+### Regenerar Proyecto
+
+Si necesitas regenerar el proyecto Xcode (por ejemplo, después de agregar addons):
+
+1. Abrir **Project Generator** de openFrameworks
+2. **Project Path**: `/ruta/al/proyecto/Particles`
+3. **Project Name**: `Particles`
+4. **Addons**: Seleccionar `ofxGui` (y otros si es necesario)
+5. Click en **Update** o **Generate**
+
+Ver [`REGENERAR_PROYECTO.md`](../../Particles/REGENERAR_PROYECTO.md) para más detalles.
+
+---
+
+## Arquitectura del Sistema
+
+### Componentes Principales
+
+```
+┌─────────────────────────────────────────┐
+│           ofApp (Clase Principal)      │
+├─────────────────────────────────────────┤
+│  • Gestión del ciclo de vida           │
+│  • Coordinación de componentes         │
+│  • Input y procesamiento                │
+│  • Rendering                            │
+└─────────────────────────────────────────┘
+           │
+           ├───► ┌──────────────────────┐
+           │     │  Sistema de           │
+           │     │  Partículas           │
+           │     │  (vector<Particle>)   │
+           │     └──────────────────────┘
+           │
+           ├───► ┌──────────────────────┐
+           │     │  MouseEfector        │
+           │     │  (Input Handler)     │
+           │     └──────────────────────┘
+           │
+           ├───► ┌──────────────────────┐
+           │     │  GUI (ofxGui)        │
+           │     │  (Parámetros)        │
+           │     └──────────────────────┘
+           │
+           └───► ┌──────────────────────┐
+                 │  OSC Sender          │
+                 │  (Futuro)            │
+                 └──────────────────────┘
+```
+
+### Flujo de Ejecución
+
+1. **Setup** (`ofApp::setup()`)
+   - Inicializa parámetros físicos
+   - Crea sistema de partículas (grid + jitter)
+   - Configura GUI con sliders
+   - Inicializa estructuras de input
+
+2. **Update Loop** (`ofApp::update()`)
+   - Actualiza parámetros desde sliders
+   - Procesa input del mouse (`updateMouseInput()`)
+   - Aplica fuerza de gesto (`applyGestureForce()`)
+   - Actualiza física de todas las partículas
+   - (Futuro) Detecta colisiones y genera eventos
+
+3. **Render Loop** (`ofApp::draw()`)
+   - Limpia fondo
+   - Renderiza partículas como puntos
+   - Dibuja debug overlay
+   - Dibuja GUI
+
+### Física del Sistema
+
+El sistema aplica tres fuerzas principales a cada partícula:
+
+1. **F_home**: Retorno al origen
+   ```
+   F_home = k_home * (home - pos)
+   ```
+
+2. **F_drag**: Amortiguación
+   ```
+   F_drag = -k_drag * vel
+   ```
+
+3. **F_gesture**: Influencia del gesto (si aplica)
+   ```
+   F_gesture = k_gesture * w * speed * dir
+   ```
+   Donde `w` es la influencia gaussiana por distancia.
+
+La integración temporal usa **semi-implícita Euler**:
+```cpp
+vel += (F_total / mass) * dt;
+pos += vel * dt;
+```
+
+---
+
+## Flujo de Datos
+
+### Input → Física → Render
+
+```
+Input (Mouse)
+    │
+    ├─► Captura posición y velocidad
+    ├─► Suavizado (lerp)
+    └─► Cálculo de velocidad normalizada
+         │
+         └─► applyGestureForce()
+              │
+              ├─► Para cada partícula:
+              │   ├─► Calcula distancia al mouse
+              │   ├─► Calcula influencia gaussiana
+              │   └─► Aplica fuerza de gesto
+              │
+              └─► Particle::update()
+                   │
+                   ├─► Aplica F_home
+                   ├─► Aplica F_drag
+                   └─► Integra posición y velocidad
+                        │
+                        └─► Render (draw)
+```
+
+### Flujo Futuro (con OSC)
+
+```
+Partículas → Colisiones → Eventos → OSC → JUCE
+    │            │           │        │      │
+    │            │           │        │      └─► Audio
+    │            │           │        │
+    │            │           │        └─► /hit messages
+    │            │           │
+    │            │           └─► Rate limiting
+    │            │
+    │            └─► Detección de bordes
+    │
+    └─► Física y movimiento
+```
+
+---
+
+## Troubleshooting
+
+### Problemas Comunes
+
+#### El proyecto no compila
+
+**Síntomas**: Errores de compilación relacionados con addons o rutas.
+
+**Soluciones**:
+1. Verificar que `OF_ROOT` esté configurado correctamente
+2. Regenerar el proyecto con Project Generator
+3. Limpiar build: `Product > Clean Build Folder` (Xcode)
+4. Verificar que `addons.make` contenga solo `ofxGui`
+
+#### Bajo rendimiento (FPS bajo)
+
+**Síntomas**: FPS < 30 con N=2000 partículas.
+
+**Soluciones**:
+1. Reducir `N_particles` a valores más bajos (1000-1500)
+2. Verificar que estés usando build Release (no Debug)
+3. Cerrar otras aplicaciones que consuman GPU
+4. Verificar drivers de gráficos actualizados
+
+#### El mouse no afecta las partículas
+
+**Síntomas**: Las partículas no responden al movimiento del mouse.
+
+**Soluciones**:
+1. Verificar que `k_gesture > 0` en los sliders
+2. Verificar que `sigma` no sea demasiado bajo (< 50)
+3. Mover el mouse más rápido (aumentar `speed_ref` si es necesario)
+4. Verificar que el mouse esté dentro de la ventana
+
+#### Las partículas desaparecen o se salen de la pantalla
+
+**Síntomas**: Partículas fuera de los bordes visibles.
+
+**Soluciones**:
+1. Aumentar `k_home` para que regresen más rápido
+2. Aumentar `k_drag` para reducir inercia
+3. (Futuro) Las colisiones con bordes resolverán esto automáticamente
+
+#### La GUI no aparece
+
+**Síntomas**: No se ven los sliders en pantalla.
+
+**Soluciones**:
+1. Presionar `g` para mostrar/ocultar GUI
+2. Verificar que `ofxGui` esté correctamente instalado
+3. Verificar que el addon esté en `addons.make`
+
+---
+
+## Roadmap Detallado
+
+### Fase 4: Colisiones y Eventos (En Desarrollo)
+
+**Objetivos**:
+- Detección de colisiones con bordes de ventana
+- Sistema de rebote físico
+- Generación de eventos `/hit` con información de colisión
+- Cooldown por partícula para evitar spam
+- Rate limiting global (máx. eventos/segundo)
+
+**Entregables**:
+- Función `checkCollisions()` en `ofApp`
+- Estructura de datos para eventos
+- Sistema de cooldown
+- Formato final de mensaje `/hit` (contrato congelado)
+
+### Fase 5: Comunicación OSC (Pendiente)
+
+**Objetivos**:
+- Integración de `ofxOsc`
+- Envío de mensajes `/hit` al sintetizador
+- Configuración de host y puerto (GUI o archivo)
+- Validación de mensajes antes de envío
+- (Opcional) Envío de mensajes `/state` periódicos
+
+**Entregables**:
+- Clase o estructura para manejo OSC
+- Configuración de red
+- Integración con sistema de eventos
+
+### Fase 3b: Integración MediaPipe (Opcional/Tardía)
+
+**Objetivos**:
+- Integración de MediaPipe para tracking
+- Detección de manos o pose corporal
+- Mapeo de tracking a `MouseEfector` (interfaz común)
+- Calibración y ajuste de parámetros
+
+**Nota**: Esta fase se implementará solo después de completar el loop modular completo (partículas → OSC → JUCE).
+
+---
+
 ## Documentación Relacionada
 
 - **[Contrato OSC](../api-osc.md)** — Contrato de mensajes OSC (cuando se implemente)
@@ -111,3 +415,27 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 ---
 
 **Última actualización**: 2026-01-20
+
+---
+
+## Notas Adicionales
+
+### Convenciones de Código
+
+- **Nomenclatura**: Variables en `snake_case`, clases en `PascalCase`
+- **Estructuras**: `MouseEfector` para input, `Particle` para partículas
+- **Parámetros**: Todos ajustables en tiempo real vía GUI
+
+### Extensiones Futuras
+
+- **Múltiples efectores**: Soporte para varios puntos de input simultáneos
+- **Diferentes tipos de partículas**: Partículas con propiedades físicas distintas
+- **Visualización avanzada**: Líneas de conexión, trails, efectos visuales
+- **Presets**: Guardar/cargar configuraciones de parámetros
+
+### Contribuciones
+
+Para contribuir o reportar problemas:
+1. Revisar la documentación técnica en [`spec.md`](spec.md)
+2. Seguir las convenciones de código existentes
+3. Documentar cambios en código y documentación
