@@ -124,8 +124,64 @@ private:
     float currentBrightness = 0.5f;
     float currentMetalness = 0.5f;
     
+    // Variación aleatoria sutil en frecuencias (para timbre más rico y menos repetitivo)
+    float frequencyVariation[NUM_MODES];
+    juce::Random freqRandom;
+    
     // Filtros resonantes para cada modo
     ResonantFilter modes[NUM_MODES];
+    
+    // Filtro formant opcional para más carácter tímbrico (peaking filter)
+    struct FormantFilter
+    {
+        float b0, b1, b2, a1, a2;
+        float x1, x2, y1, y2;
+        
+        void reset()
+        {
+            x1 = x2 = y1 = y2 = 0.0f;
+        }
+        
+        void setCoefficients(float freq, float q, float gain, double sampleRate)
+        {
+            // Peaking filter (EQ boost/cut) - implementación simplificada y RT-safe
+            float w = 2.0f * juce::MathConstants<float>::pi * freq / (float)sampleRate;
+            float cosw = std::cos(w);
+            float sinw = std::sin(w);
+            float A = std::sqrt(gain); // Linear gain
+            float alpha = sinw / (2.0f * q);
+            
+            float b0_peak = 1.0f + alpha * A;
+            float b1_peak = -2.0f * cosw;
+            float b2_peak = 1.0f - alpha * A;
+            float a0_peak = 1.0f + alpha / A;
+            float a1_peak = -2.0f * cosw;
+            float a2_peak = 1.0f - alpha / A;
+            
+            float norm = 1.0f / a0_peak;
+            b0 = b0_peak * norm;
+            b1 = b1_peak * norm;
+            b2 = b2_peak * norm;
+            a1 = a1_peak * norm;
+            a2 = a2_peak * norm;
+        }
+        
+        float process(float input)
+        {
+            float output = b0 * input + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+            x2 = x1;
+            x1 = input;
+            y2 = y1;
+            y1 = output;
+            return output;
+        }
+    };
+    
+    FormantFilter formantFilter;
+    bool formantEnabled = true; // Habilitado por defecto para timbre metálico
+    float formantFreq = 3000.0f; // Frecuencia formant típica para metales (3kHz)
+    float formantQ = 2.0f;
+    float formantGain = 1.3f; // Boost ligero en formant
     
     // Excitación: buffer de ruido con envolvente
     juce::Random random;

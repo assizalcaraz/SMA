@@ -100,6 +100,13 @@ private:
     float limiterThreshold = 0.95f;
     float limiterRatio = 10.0f;
     
+    // Reverb simple (delay con feedback)
+    static constexpr int REVERB_DELAY_SIZE = 48000; // ~1 segundo a 48kHz
+    float reverbDelayBuffer[REVERB_DELAY_SIZE];
+    int reverbWritePosition = 0;
+    float reverbFeedback = 0.3f; // Feedback del reverb
+    float reverbDecay = 0.7f; // Decay del reverb
+    
     // Medición de nivel de salida
     float outputLevel = 0.0f;
     float outputLevelDecay = 0.999f; // Decay para RMS

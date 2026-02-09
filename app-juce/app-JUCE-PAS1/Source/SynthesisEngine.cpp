@@ -3,6 +3,13 @@
 //==============================================================================
 SynthesisEngine::SynthesisEngine()
 {
+    // Inicializar buffer de reverb
+    for (int i = 0; i < REVERB_DELAY_SIZE; i++)
+    {
+        reverbDelayBuffer[i] = 0.0f;
+    }
+    reverbWritePosition = 0;
+    
     reset();
 }
 
@@ -67,7 +74,13 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
     
     // Aplicar procesamiento master
     float currentDrive = drive.load();
+    float currentReverbMix = reverbMix.load();
     bool currentLimiterEnabled = limiterEnabled.load();
+    
+    // Calcular delay time para reverb (múltiples taps para más riqueza)
+    int delayTime1 = (int)(currentSampleRate * 0.03f); // 30ms
+    int delayTime2 = (int)(currentSampleRate * 0.05f); // 50ms
+    int delayTime3 = (int)(currentSampleRate * 0.07f); // 70ms
     
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
@@ -76,11 +89,36 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         for (int sample = 0; sample < numSamples; sample++)
         {
             float sampleValue = channelData[sample];
+            float drySignal = sampleValue;
             
             // Aplicar saturación si drive > 0
             if (currentDrive > 0.0f)
             {
                 sampleValue = applySaturation(sampleValue, currentDrive);
+            }
+            
+            // Aplicar reverb si mix > 0 - hacerlo MUCHO más audible
+            float wetSignal = 0.0f;
+            if (currentReverbMix > 0.001f)
+            {
+                // Leer múltiples taps del delay con más ganancia
+                int readPos1 = (reverbWritePosition - delayTime1 + REVERB_DELAY_SIZE) % REVERB_DELAY_SIZE;
+                int readPos2 = (reverbWritePosition - delayTime2 + REVERB_DELAY_SIZE) % REVERB_DELAY_SIZE;
+                int readPos3 = (reverbWritePosition - delayTime3 + REVERB_DELAY_SIZE) % REVERB_DELAY_SIZE;
+                
+                float delayed1 = reverbDelayBuffer[readPos1] * 0.6f; // Aumentado de 0.5
+                float delayed2 = reverbDelayBuffer[readPos2] * 0.3f;
+                float delayed3 = reverbDelayBuffer[readPos3] * 0.1f; // Reducido de 0.2
+                
+                wetSignal = (delayed1 + delayed2 + delayed3) * reverbDecay * 1.5f; // Boost 50% más
+                
+                // Escribir al delay con feedback más alto
+                reverbDelayBuffer[reverbWritePosition] = sampleValue + wetSignal * reverbFeedback * 1.2f;
+                reverbWritePosition = (reverbWritePosition + 1) % REVERB_DELAY_SIZE;
+                
+                // Mezclar dry y wet con curva más agresiva
+                float reverbMixCurve = currentReverbMix * currentReverbMix; // Curva cuadrática
+                sampleValue = drySignal * (1.0f - reverbMixCurve) + wetSignal * reverbMixCurve * 1.3f; // Boost wet signal
             }
             
             // Aplicar limiter si está habilitado
@@ -107,9 +145,12 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
 //==============================================================================
 void SynthesisEngine::setMaxVoices(int newMaxVoices)
 {
-    // RT-SAFE: Solo actualiza el atomic, no modifica voces desde aquí
-    // VoiceManager debe pre-allocar todas las voces y solo activar/desactivar según este valor
-    maxVoices.store(juce::jlimit(4, 12, newMaxVoices)); // Rango reducido a 4-12 para estabilidad RT
+    // RT-SAFE: Actualizar atomic y también el VoiceManager
+    int limitedVoices = juce::jlimit(4, 12, newMaxVoices);
+    maxVoices.store(limitedVoices);
+    
+    // Actualizar VoiceManager (esto es seguro porque se llama desde UI thread)
+    voiceManager.setMaxVoices(limitedVoices);
 }
 
 void SynthesisEngine::setMetalness(float newMetalness)
@@ -242,15 +283,33 @@ void SynthesisEngine::reset()
 {
     voiceManager.resetAll();
     outputLevel = 0.0f;
+    
+    // Limpiar buffer de reverb
+    for (int i = 0; i < REVERB_DELAY_SIZE; i++)
+    {
+        reverbDelayBuffer[i] = 0.0f;
+    }
+    reverbWritePosition = 0;
 }
 
 //==============================================================================
 float SynthesisEngine::applySaturation(float sample, float driveAmount)
 {
-    // Saturación suave usando tanh
+    // Saturación mucho más agresiva y audible
     // driveAmount 0 = sin saturación, 1 = saturación máxima
-    float saturationAmount = 1.0f + driveAmount * 2.0f; // 1.0 a 3.0
-    return std::tanh(sample * saturationAmount) / saturationAmount;
+    if (driveAmount < 0.001f)
+        return sample;
+    
+    // Ganancia de entrada mucho más alta para saturación más notoria
+    float inputGain = 1.0f + driveAmount * 8.0f; // 1.0 a 9.0 (muy agresivo)
+    float saturated = std::tanh(sample * inputGain);
+    
+    // Ganancia de salida para compensar pérdida de nivel
+    float outputGain = 1.0f + driveAmount * 1.5f; // 1.0 a 2.5
+    
+    // Mezcla entre señal original y saturada
+    float mix = driveAmount * 0.8f; // Mezcla hasta 80% saturado
+    return (sample * (1.0f - mix) + saturated * mix) * outputGain;
 }
 
 //==============================================================================

@@ -3,6 +3,11 @@
 //==============================================================================
 ModalVoice::ModalVoice()
 {
+    // Inicializar variaciones de frecuencia (serán regeneradas en trigger)
+    for (int i = 0; i < NUM_MODES; i++)
+    {
+        frequencyVariation[i] = 1.0f;
+    }
     reset();
 }
 
@@ -12,6 +17,12 @@ void ModalVoice::prepare(double sampleRate)
     currentSampleRate = sampleRate;
     reset();
     updateFilterCoefficients();
+    
+    // Preparar filtro formant
+    if (formantEnabled)
+    {
+        formantFilter.setCoefficients(formantFreq, formantQ, formantGain, sampleRate);
+    }
 }
 
 //==============================================================================
@@ -26,25 +37,43 @@ void ModalVoice::setParameters(float baseFreq, float amplitude, float damping,
         needsUpdate = true;
     }
     
+    float prevBrightness = currentBrightness;
+    float prevMetalness = currentMetalness;
+    
     currentAmplitude = juce::jlimit(0.0f, 1.0f, amplitude);
     currentDamping = juce::jlimit(0.0f, 1.0f, damping);
     currentBrightness = juce::jlimit(0.0f, 1.0f, brightness);
     currentMetalness = juce::jlimit(0.0f, 1.0f, metalness);
     
-    if (needsUpdate)
+    // Actualizar coeficientes si cambió frecuencia, brightness o metalness
+    if (needsUpdate || std::abs(prevBrightness - currentBrightness) > 0.01f || 
+        std::abs(prevMetalness - currentMetalness) > 0.01f)
     {
         updateFilterCoefficients();
     }
     
-    // Actualizar decay rate basado en damping
-    // Damping 0 = decay muy lento, damping 1 = decay muy rápido
-    float decayTime = juce::jmap(currentDamping, 0.05f, 2.0f, 0.0f, 1.0f); // 50ms a 2 segundos
+    // Actualizar decay rate basado en damping - respuesta MUCHO más dramática
+    // Damping 0 = decay muy lento (largo), damping 1 = decay muy rápido (corto)
+    // Mapeo invertido y más extremo para que sea muy notorio
+    float dampingInverted = 1.0f - currentDamping; // Invertir: 0 = corto, 1 = largo
+    float dampingCurve = dampingInverted * dampingInverted * dampingInverted; // Curva cúbica para más impacto
+    float decayTime = juce::jmap(dampingCurve, 0.01f, 5.0f, 0.0f, 1.0f); // 10ms a 5 segundos (rango muy amplio)
     envelopeDecay = decayTime > 0.0f ? std::exp(-1.0f / (decayTime * (float)currentSampleRate)) : 0.0f;
 }
 
 //==============================================================================
 void ModalVoice::trigger()
 {
+    // Regenerar variaciones aleatorias de frecuencia para timbre más rico
+    // Variación sutil: ±2% para evitar que suene desafinado
+    for (int i = 0; i < NUM_MODES; i++)
+    {
+        frequencyVariation[i] = 1.0f + (freqRandom.nextFloat() - 0.5f) * 0.04f; // ±2%
+    }
+    
+    // Actualizar coeficientes con las nuevas variaciones
+    updateFilterCoefficients();
+    
     generateExcitation();
     isExciting = true;
     excitationPosition = 0;
@@ -78,6 +107,12 @@ float ModalVoice::renderNextSample()
     // RT-SAFE: Procesar modos (optimizado para 4 modos)
     float output = modes[0].process(excitation) + modes[1].process(excitation) + 
                    modes[2].process(excitation) + modes[3].process(excitation);
+    
+    // Aplicar filtro formant opcional para más carácter tímbrico
+    if (formantEnabled)
+    {
+        output = formantFilter.process(output);
+    }
     
     // Aplicar envolvente de decaimiento global (optimizado: combinar multiplicaciones)
     float envAmp = envelope * currentAmplitude;
@@ -120,6 +155,8 @@ void ModalVoice::reset()
         modes[i].reset();
     }
     
+    formantFilter.reset();
+    
     excitationPosition = 0;
     excitationLength = 0;
     isExciting = false;
@@ -138,6 +175,12 @@ void ModalVoice::updateFilterCoefficients()
         
         modes[i].setCoefficients(freq, q, gain, currentSampleRate);
     }
+    
+    // Actualizar filtro formant: ajustar frecuencia según brightness para más expresividad
+    // Brightness alto = formant más alto (más brillante)
+    float formantFreqAdjusted = formantFreq * (1.0f + currentBrightness * 0.5f); // 3kHz a 4.5kHz
+    float formantGainAdjusted = formantGain * (0.8f + currentBrightness * 0.4f); // 1.04 a 1.56
+    formantFilter.setCoefficients(formantFreqAdjusted, formantQ, formantGainAdjusted, currentSampleRate);
 }
 
 //==============================================================================
@@ -179,10 +222,15 @@ float ModalVoice::calculateModeFrequency(int modeIndex) const
     // Frecuencia base multiplicada por factor inarmónico
     float inharmonicFactor = INHARMONIC_FACTORS[modeIndex];
     
-    // Aplicar metalness: 0 = armónico, 1 = muy inarmónico
-    float spread = 1.0f + currentMetalness * (inharmonicFactor - 1.0f);
+    // Aplicar metalness mejorado: mapeo no lineal para mayor impacto
+    // Usar curva exponencial para que metalness tenga más efecto en valores altos
+    float metalnessCurve = currentMetalness * currentMetalness; // Curva cuadrática
+    float spread = 1.0f + metalnessCurve * (inharmonicFactor - 1.0f);
     
-    return currentBaseFreq * spread;
+    // Aplicar variación aleatoria sutil (regenerada en cada trigger)
+    float freq = currentBaseFreq * spread * frequencyVariation[modeIndex];
+    
+    return freq;
 }
 
 //==============================================================================
@@ -191,11 +239,28 @@ float ModalVoice::calculateModeGain(int modeIndex) const
     // Ganancia base del modo
     float baseGain = MODE_GAINS[modeIndex];
     
-    // Aplicar brightness: 0 = más graves, 1 = más agudos
-    // Modos más altos (índices mayores) se potencian con brightness
-    float brightnessFactor = 1.0f + currentBrightness * ((float)modeIndex / (float)(NUM_MODES - 1));
+    // Aplicar brightness MUCHO más dramático: 0 = más graves, 1 = más agudos
+    float modePosition = (float)modeIndex / (float)(NUM_MODES - 1); // 0.0 a 1.0
     
-    return baseGain * brightnessFactor;
+    // Curva más agresiva para brightness
+    float brightnessCurve = currentBrightness * currentBrightness; // Curva cuadrática
+    
+    if (brightnessCurve > 0.5f)
+    {
+        // Brightness alto: reducir graves MUCHO, potenciar agudos MUCHO
+        float brightAmount = (brightnessCurve - 0.5f) * 2.0f; // 0.0 a 1.0
+        float reductionFactor = 1.0f - (brightAmount * (1.0f - modePosition) * 0.9f); // Reducir graves hasta 90%
+        float boostFactor = 1.0f + (brightAmount * modePosition * 3.0f); // Potenciar agudos hasta 300%
+        return baseGain * reductionFactor * boostFactor;
+    }
+    else
+    {
+        // Brightness bajo: potenciar graves MUCHO, reducir agudos MUCHO
+        float darkAmount = (0.5f - brightnessCurve) * 2.0f; // 0.0 a 1.0
+        float boostFactor = 1.0f + (darkAmount * (1.0f - modePosition) * 2.0f); // Potenciar graves hasta 200%
+        float reductionFactor = 1.0f - (darkAmount * modePosition * 0.8f); // Reducir agudos hasta 80%
+        return baseGain * boostFactor * reductionFactor;
+    }
 }
 
 //==============================================================================

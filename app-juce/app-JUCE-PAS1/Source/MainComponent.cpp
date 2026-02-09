@@ -5,7 +5,7 @@ MainComponent::MainComponent()
 {
     // Configurar sliders y labels
     setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
-    setupSlider(metalnessSlider, metalnessLabel, "Metalness", 0.0, 1.0, 0.5);
+    setupSlider(metalnessSlider, metalnessLabel, "Pitch", 0.0, 1.0, 0.5);
     setupSlider(brightnessSlider, brightnessLabel, "Brightness", 0.0, 1.0, 0.5);
     setupSlider(dampingSlider, dampingLabel, "Damping", 0.0, 1.0, 0.5);
     setupSlider(driveSlider, driveLabel, "Drive", 0.0, 1.0, 0.0);
@@ -153,22 +153,39 @@ void MainComponent::resized()
     
     const int sliderHeight = 60;
     const int margin = 10;
-    const int labelWidth = 120;
+    const int labelWidth = 100;
     const int sliderWidth = 200;
     
     // Primera columna de sliders
     auto leftColumn = area.removeFromLeft(350);
     
-    voicesSlider.setBounds(leftColumn.removeFromTop(sliderHeight).reduced(margin));
-    metalnessSlider.setBounds(leftColumn.removeFromTop(sliderHeight).reduced(margin));
-    brightnessSlider.setBounds(leftColumn.removeFromTop(sliderHeight).reduced(margin));
-    dampingSlider.setBounds(leftColumn.removeFromTop(sliderHeight).reduced(margin));
+    // Layout mejorado: label a la izquierda, slider a la derecha
+    auto voicesArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    voicesLabel.setBounds(voicesArea.removeFromLeft(labelWidth));
+    voicesSlider.setBounds(voicesArea);
+    
+    auto metalnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
+    metalnessSlider.setBounds(metalnessArea);
+    
+    auto brightnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    brightnessLabel.setBounds(brightnessArea.removeFromLeft(labelWidth));
+    brightnessSlider.setBounds(brightnessArea);
+    
+    auto dampingArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
+    dampingSlider.setBounds(dampingArea);
     
     // Segunda columna de sliders
     auto rightColumn = area.removeFromLeft(350);
     
-    driveSlider.setBounds(rightColumn.removeFromTop(sliderHeight).reduced(margin));
-    reverbMixSlider.setBounds(rightColumn.removeFromTop(sliderHeight).reduced(margin));
+    auto driveArea = rightColumn.removeFromTop(sliderHeight).reduced(margin);
+    driveLabel.setBounds(driveArea.removeFromLeft(labelWidth));
+    driveSlider.setBounds(driveArea);
+    
+    auto reverbArea = rightColumn.removeFromTop(sliderHeight).reduced(margin);
+    reverbMixLabel.setBounds(reverbArea.removeFromLeft(labelWidth));
+    reverbMixSlider.setBounds(reverbArea);
     
     // Limiter toggle
     limiterToggle.setBounds(rightColumn.removeFromTop(30).reduced(margin));
@@ -278,7 +295,8 @@ void MainComponent::setupSlider(juce::Slider& slider, juce::Label& label,
     addAndMakeVisible(&slider);
     
     label.setText(name, juce::dontSendNotification);
-    label.attachToComponent(&slider, true);
+    label.attachToComponent(&slider, false); // Cambiar a false para evitar superposición
+    label.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(&label);
 }
 
