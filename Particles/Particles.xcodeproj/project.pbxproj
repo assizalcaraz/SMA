@@ -547,7 +547,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvContourFinder.cpp",
 			"sourceTree": "<group>"
 		},
 		"0F1EC4E9-E0E2-4CBC-B163-35F5060956EC": {
@@ -621,7 +620,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvImage.h",
 			"sourceTree": "<group>"
 		},
 		"10CDDD70-3741-40A6-B958-1DEFE9F136D9": {
@@ -1245,7 +1243,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvFloatImage.cpp",
 			"sourceTree": "<group>"
 		},
 		"2129BC9F-2803-4B1A-9E2F-63750422EEC2": {
@@ -1738,7 +1735,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvShortImage.cpp",
 			"sourceTree": "<group>"
 		},
 		"2B31FA9C-B78C-4669-9CAA-39368EABFD6B": {
@@ -2561,7 +2557,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvGrayscaleImage.cpp",
 			"sourceTree": "<group>"
 		},
 		"45D69512-1886-48A8-A42F-AD882AE510C7": {
@@ -2756,7 +2751,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "UdpSocket.h",
 			"sourceTree": "<group>"
 		},
 		"4A256A83-2D5B-44DB-83F0-8C77D06086FD": {
@@ -2917,7 +2911,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "OscOutboundPacketStream.cpp",
 			"sourceTree": "<group>"
 		},
 		"4CA07A6B-AD64-45CB-A93D-7E955049BD48": {
@@ -2941,7 +2934,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvBlob.h",
 			"sourceTree": "<group>"
 		},
 		"4D0B39DF-6183-40D8-9E42-148EE102C290": {
@@ -3697,7 +3689,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvHaarFinder.h",
 			"sourceTree": "<group>"
 		},
 		"5F0FA1AF-0798-4688-A49A-38EAEA7421E2": {
@@ -3980,7 +3971,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvHaarFinder.cpp",
 			"sourceTree": "<group>"
 		},
 		"67171FAC-BF97-4303-8983-F8EFBA7EF7BD": {
@@ -4540,7 +4530,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "OscOutboundPacketStream.h",
 			"sourceTree": "<group>"
 		},
 		"766F1F94-26FD-4181-A07E-DE92B58D1B0E": {
@@ -5258,7 +5247,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvGrayscaleImage.h",
 			"sourceTree": "<group>"
 		},
 		"88F86E5F-DEA6-4073-A772-D115A5466338": {
@@ -5856,7 +5844,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvContourFinder.h",
 			"sourceTree": "<group>"
 		},
 		"986A5FDF-4A14-47AC-9963-848C63F48C72": {
@@ -5961,7 +5948,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvConstants.h",
 			"sourceTree": "<group>"
 		},
 		"9B96118D-F554-4AEA-B546-106335248C47": {
@@ -6085,7 +6071,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvColorImage.h",
 			"sourceTree": "<group>"
 		},
 		"9D917AD3-0B50-4C41-A9DB-60F7A0C7D797": {
@@ -7073,7 +7058,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "UdpSocket.cpp",
 			"sourceTree": "<group>"
 		},
 		"B9D259D4-65A6-429C-96F5-A1A70CF7FEE3": {
@@ -7641,7 +7625,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvImage.cpp",
 			"sourceTree": "<group>"
 		},
 		"C6498FDF-7859-4F58-B75C-E23FA1CD1E64": {
@@ -8776,7 +8759,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "NetworkingUtils.h",
 			"sourceTree": "<group>"
 		},
 		"E2063D90-C1EE-4E51-99C9-D04B5273A88F": {
@@ -9546,7 +9528,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "NetworkingUtils.cpp",
 			"sourceTree": "<group>"
 		},
 		"F15D180E-9F64-46AD-97F9-5B6BFA3F1A47": {
@@ -9753,7 +9734,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.cpp",
-			"name": "ofxCvColorImage.cpp",
 			"sourceTree": "<group>"
 		},
 		"F6B6EF2A-AB7A-4254-AB07-A74A5EE6ABD7": {
@@ -9981,7 +9961,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvShortImage.h",
 			"sourceTree": "<group>"
 		},
 		"FBAF3B24-FB84-4BC3-ADFD-8E0E02327B8D": {
@@ -10172,7 +10151,6 @@
 			"fileEncoding": "4",
 			"isa": "PBXFileReference",
 			"lastKnownFileType": "sourcecode.cpp.h",
-			"name": "ofxCvFloatImage.h",
 			"sourceTree": "<group>"
 		},
 		"FF156FAC-5A01-4B02-BD92-9E93F168DD49": {
