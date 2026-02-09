@@ -69,6 +69,8 @@ class ofApp : public ofBaseApp{
 		// Parámetros de colisiones
 		float restitution;       // Coeficiente de restitución (0.2-0.85)
 		float hit_cooldown_ms;   // Cooldown por partícula en ms (30-120)
+		float particle_radius;   // Radio de colisión entre partículas (píxeles)
+		bool enable_particle_collisions;  // Habilitar/deshabilitar colisiones partícula-partícula
 		
 		// Parámetros de energía
 		float vel_ref;           // Velocidad de referencia para energía (300-1000)
@@ -113,6 +115,8 @@ class ofApp : public ofBaseApp{
 		ofxFloatSlider speedRefSlider;
 		ofxFloatSlider restitutionSlider;
 		ofxFloatSlider hitCooldownSlider;
+		ofxFloatSlider particleRadiusSlider;
+		ofxToggle enableParticleCollisionsToggle;
 		ofxFloatSlider velRefSlider;
 		ofxFloatSlider distRefSlider;
 		ofxFloatSlider energyASlider;
@@ -130,8 +134,11 @@ class ofApp : public ofBaseApp{
 		
 		// Funciones de colisiones y eventos
 		void checkCollisions();
+		void checkParticleCollisions();  // Detectar colisiones entre partículas
 		float calculateHitEnergy(Particle& p, int surface);
+		float calculateParticleCollisionEnergy(Particle& p1, Particle& p2);
 		void generateHitEvent(Particle& p, int surface);
+		void generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisionPoint);
 		void updateRateLimiter(float dt);
 		bool canEmitHit();
 		void consumeToken();

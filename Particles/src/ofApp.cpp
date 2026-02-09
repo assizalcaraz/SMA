@@ -19,6 +19,8 @@ void ofApp::setup(){
     // Parámetros de colisiones
     restitution = 0.6f;      // Coeficiente de restitución (0.2-0.85)
     hit_cooldown_ms = 60.0f; // Cooldown por partícula en ms (30-120)
+    particle_radius = 5.0f;  // Radio de colisión entre partículas (píxeles)
+    enable_particle_collisions = true;  // Habilitar colisiones partícula-partícula por defecto
     
     // Parámetros de energía
     // NOTA: Valores ajustados para hacer más factible y frecuente que partículas lleguen al margen
@@ -65,6 +67,8 @@ void ofApp::setup(){
     // Sliders de colisiones
     gui.add(restitutionSlider.setup("restitution", restitution, 0.2f, 0.85f));
     gui.add(hitCooldownSlider.setup("hit_cooldown (ms)", hit_cooldown_ms, 30.0f, 120.0f));
+    gui.add(particleRadiusSlider.setup("particle_radius", particle_radius, 2.0f, 20.0f));
+    gui.add(enableParticleCollisionsToggle.setup("enable_particle_collisions", enable_particle_collisions));
     
     // Sliders de energía
     gui.add(velRefSlider.setup("vel_ref", vel_ref, 300.0f, 1000.0f));
@@ -96,6 +100,8 @@ void ofApp::update(){
     // Actualizar parámetros de colisiones
     restitution = restitutionSlider;
     hit_cooldown_ms = hitCooldownSlider;
+    particle_radius = particleRadiusSlider;
+    enable_particle_collisions = enableParticleCollisionsToggle;
     
     // Actualizar parámetros de energía
     vel_ref = velRefSlider;
@@ -146,6 +152,11 @@ void ofApp::update(){
     
     // Detectar y manejar colisiones
     checkCollisions();
+    
+    // Detectar colisiones entre partículas (si está habilitado)
+    if (enable_particle_collisions) {
+        checkParticleCollisions();
+    }
     
     // Procesar eventos pendientes con rate limiting
     processPendingHits();
@@ -380,6 +391,65 @@ void ofApp::checkCollisions() {
 }
 
 //--------------------------------------------------------------
+void ofApp::checkParticleCollisions() {
+    float width = ofGetWidth();
+    float height = ofGetHeight();
+    float collision_distance = particle_radius * 2.0f;  // Distancia mínima para colisión
+    
+    // Guardar velocidades PRE-colisión para todas las partículas
+    for (auto& p : particles) {
+        p.vel_pre = p.vel;
+    }
+    
+    // Detectar colisiones entre todas las parejas de partículas
+    // Usar doble loop pero evitar procesar la misma pareja dos veces
+    for (size_t i = 0; i < particles.size(); i++) {
+        Particle& p1 = particles[i];
+        
+        for (size_t j = i + 1; j < particles.size(); j++) {
+            Particle& p2 = particles[j];
+            
+            // Calcular distancia entre partículas
+            ofVec2f diff = p1.pos - p2.pos;
+            float distance = diff.length();
+            
+            // Verificar si hay colisión
+            if (distance < collision_distance && distance > 0.001f) {  // Evitar división por cero
+                // Calcular punto de colisión (punto medio)
+                ofVec2f collisionPoint = (p1.pos + p2.pos) * 0.5f;
+                
+                // Aplicar rebote físico (colisión elástica simple)
+                // Calcular velocidad relativa usando velocidades PRE-colisión
+                ofVec2f relVel = p1.vel_pre - p2.vel_pre;
+                ofVec2f normal = diff.normalized();
+                
+                // Componente de velocidad relativa en dirección normal
+                float velAlongNormal = relVel.dot(normal);
+                
+                // Solo procesar si las partículas se están acercando
+                if (velAlongNormal < 0.0f) {
+                    // Calcular impulso (simplificado, asumiendo masas iguales)
+                    float impulse = velAlongNormal * (1.0f + restitution);
+                    
+                    // Aplicar impulso a ambas partículas
+                    p1.vel -= normal * impulse * 0.5f;
+                    p2.vel += normal * impulse * 0.5f;
+                    
+                    // Separar partículas para evitar penetración
+                    float overlap = collision_distance - distance;
+                    ofVec2f separation = normal * overlap * 0.5f;
+                    p1.pos += separation;
+                    p2.pos -= separation;
+                    
+                    // Generar evento de hit (usa vel_pre que ya fue guardado)
+                    generateParticleHitEvent(p1, p2, collisionPoint);
+                }
+            }
+        }
+    }
+}
+
+//--------------------------------------------------------------
 float ofApp::calculateHitEnergy(Particle& p, int surface) {
     // Velocidad normalizada: speed_norm = |vel_pre| / vel_ref
     float speed_norm = ofClamp(p.vel_pre.length() / vel_ref, 0.0f, 1.0f);
@@ -396,6 +466,77 @@ float ofApp::calculateHitEnergy(Particle& p, int surface) {
     }
     
     return energy;
+}
+
+//--------------------------------------------------------------
+float ofApp::calculateParticleCollisionEnergy(Particle& p1, Particle& p2) {
+    // Calcular velocidad relativa
+    ofVec2f relVel = p1.vel_pre - p2.vel_pre;
+    float relSpeed = relVel.length();
+    
+    // Normalizar velocidad relativa usando vel_ref
+    float speed_norm = ofClamp(relSpeed / vel_ref, 0.0f, 1.0f);
+    
+    // Usar distancia promedio desde último hit (o usar distancia actual si no hay hit previo)
+    float avg_distance = (p1.last_hit_distance + p2.last_hit_distance) * 0.5f;
+    float dist_norm = ofClamp(avg_distance / dist_ref, 0.0f, 1.0f);
+    
+    // Energía combinada: energy = clamp(a * speed_norm + b * dist_norm, 0..1)
+    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm, 0.0f, 1.0f);
+    
+    // Validación mínima: descartar ruido numérico extremo
+    if (energy < 0.001f) {
+        return 0.0f;
+    }
+    
+    return energy;
+}
+
+//--------------------------------------------------------------
+void ofApp::generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisionPoint) {
+    float timeNow = ofGetElapsedTimef();
+    
+    // Verificar cooldown para ambas partículas
+    float timeSinceLastHit1 = timeNow - p1.lastHitTime;
+    float timeSinceLastHit2 = timeNow - p2.lastHitTime;
+    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
+    
+    // Solo generar evento si ambas partículas están fuera del cooldown
+    // (o al menos una, para evitar perder eventos)
+    if (timeSinceLastHit1 < cooldown_seconds && timeSinceLastHit2 < cooldown_seconds) {
+        hits_discarded_cooldown++;
+        return; // Ambas partículas en cooldown
+    }
+    
+    // Calcular energía del impacto
+    float energy = calculateParticleCollisionEnergy(p1, p2);
+    
+    if (energy <= 0.0f) {
+        return; // Energía demasiado baja (ruido numérico)
+    }
+    
+    // Crear evento de hit usando la partícula con mayor energía o la primera
+    // Usar punto de colisión como posición
+    Particle& p = (p1.vel_pre.length() > p2.vel_pre.length()) ? p1 : p2;
+    
+    HitEvent event;
+    event.id = p.id;  // Usar ID de la partícula con mayor velocidad
+    event.x = ofClamp(collisionPoint.x / ofGetWidth(), 0.0f, 1.0f);
+    event.y = ofClamp(collisionPoint.y / ofGetHeight(), 0.0f, 1.0f);
+    event.energy = energy;
+    event.surface = -1;  // -1 indica colisión partícula-partícula (no superficie)
+    
+    // Agregar a eventos pendientes
+    pending_hits.push_back(event);
+    
+    // Actualizar estado de ambas partículas
+    p1.lastHitTime = timeNow;
+    p1.last_hit_distance = 0.0f;
+    p1.last_surface = -1;
+    
+    p2.lastHitTime = timeNow;
+    p2.last_hit_distance = 0.0f;
+    p2.last_surface = -1;
 }
 
 //--------------------------------------------------------------
