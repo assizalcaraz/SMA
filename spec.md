@@ -215,6 +215,7 @@ Todas las colisiones producen sonido, incluyendo micro-colisiones ("scrapes"). E
   * Tratar como "scrape" (roce) con throttling
   * Cooldown por partícula: 30-120ms (configurable)
   * Opcional: partícula debe re-entrar al interior por margen (hysteresis) antes de hits de fuerza completa
+  * **Importante:** Scrapes ≠ hits fuertes; comparten el mismo mensaje `/hit` con energía muy baja (no hay mensaje OSC separado para scrapes)
   * Scrapes producen eventos de energía muy baja pero audibles
 
 **Validación y rate limiting:**
@@ -230,12 +231,12 @@ Todas las colisiones producen sonido, incluyendo micro-colisiones ("scrapes"). E
   * Si `tokens < 1` → descartar hit
   * Parámetros: `max_hits_per_second` = 200, `burst` = 300, `max_hits_per_frame` = 10
 
-**Parámetros:**
+**Parámetros (tuneables por escena/estética):**
 
-* `vel_ref` ∈ [300, 1000] px/s (valor inicial: 500)
-* `dist_ref` ∈ [20, 100] px (valor inicial: 50)
-* `a` ∈ [0.5, 0.9] (peso velocidad, valor inicial: 0.7)
-* `b` ∈ [0.1, 0.5] (peso distancia, valor inicial: 0.3)
+* `vel_ref` ∈ [300, 1000] px/s (valor inicial: 500) — ajustar según sensibilidad deseada
+* `dist_ref` ∈ [20, 100] px (valor inicial: 50) — ajustar según escala de movimiento
+* `a` ∈ [0.5, 0.9] (peso velocidad, valor inicial: 0.7) — más peso a velocidad = más reactivo
+* `b` ∈ [0.1, 0.5] (peso distancia, valor inicial: 0.3) — más peso a distancia = más suave
 * `hit_cooldown` ∈ [30ms, 120ms] por partícula
 
 ### 3.4 Rendering (visual)

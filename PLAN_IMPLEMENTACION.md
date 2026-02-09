@@ -239,13 +239,15 @@ Sistema Modular Audiovisual/
     - [ ] `distance_traveled` = distancia recorrida desde último hit (o desde último frame si es primer hit)
     - [ ] `dist_ref` = distancia de referencia configurable (valor inicial recomendado: 50 px)
   - [ ] Energía combinada: `energy = clamp(a * speed_norm + b * dist_norm, 0..1)`
-    - [ ] `a` y `b` son pesos configurables (valores iniciales recomendados: a=0.7, b=0.3)
+    - [ ] `a` y `b` son pesos configurables (valores iniciales recomendados: a=0.7, b=0.3) — **tuneables por escena/estética**
+    - [ ] `vel_ref` y `dist_ref` también son tuneables por escena/estética
     - [ ] **Todas las colisiones producen sonido**, incluso micro-colisiones (energy muy baja → amplitud muy baja, no mute)
 - [ ] **Anti-stuck rule (partículas pegadas al borde):**
   - [ ] Detectar si partícula permanece en contacto con borde por múltiples frames
   - [ ] Tratar como "scrape" (roce) y throttling por partícula:
     - [ ] Cooldown por partícula: 30-120ms (configurable)
     - [ ] Opcional: partícula debe re-entrar al interior por margen (hysteresis) antes de hits de fuerza completa
+    - [ ] **Importante:** Scrapes ≠ hits fuertes; comparten el mismo mensaje `/hit` con energía muy baja (no hay mensaje OSC separado)
     - [ ] Scrapes producen eventos de energía muy baja pero audibles
 - [ ] **Cooldown por partícula:**
   - [ ] Verificar `timeNow - lastHitTime > hit_cooldown` (30-120ms)

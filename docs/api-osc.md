@@ -56,12 +56,14 @@ energy = clamp(a * speed_norm + b * dist_norm, 0.0, 1.0)
 
 Donde:
 - `v_pre` = velocidad PRE-colisión (antes de aplicar restitución)
-- `vel_ref` = velocidad de referencia (valor inicial recomendado: 500 px/s)
+- `vel_ref` = velocidad de referencia (valor inicial recomendado: 500 px/s) — **tuneable por escena/estética**
 - `distance_traveled` = distancia recorrida desde último hit (o desde último frame si es primer hit)
-- `dist_ref` = distancia de referencia (valor inicial recomendado: 50 px)
-- `a`, `b` = pesos configurables (valores iniciales recomendados: a=0.7, b=0.3)
+- `dist_ref` = distancia de referencia (valor inicial recomendado: 50 px) — **tuneable por escena/estética**
+- `a`, `b` = pesos configurables (valores iniciales recomendados: a=0.7, b=0.3) — **tuneables por escena/estética**
 
-**Importante:** Todas las colisiones producen sonido, incluso micro-colisiones. La energía muy baja se mapea a amplitud muy baja pero audible (no mute), creando textura granular "coin cascade".
+**Importante:** Todas las colisiones producen sonido, incluso micro-colisiones ("scrapes"). La energía muy baja se mapea a amplitud muy baja pero audible (no mute), creando textura granular "coin cascade".
+
+**Nota sobre scrapes:** Los roces (scrapes) de partículas pegadas al borde **no son hits fuertes**; comparten el mismo mensaje `/hit` con energía muy baja. No hay mensaje OSC separado para scrapes.
 
 **Superficies (`surface`):**
 
