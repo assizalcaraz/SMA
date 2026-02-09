@@ -2,7 +2,7 @@
 
 Especificación técnica detallada del módulo de partículas. Documentación para desarrolladores.
 
-**Última actualización:** Fase 3 completada
+**Última actualización:** Fase 4 completada
 
 ---
 
@@ -26,12 +26,15 @@ Especificación técnica detallada del módulo de partículas. Documentación pa
 
 ```cpp
 class Particle {
-    ofVec2f home;        // Posición de reposo
-    ofVec2f pos;         // Posición actual
-    ofVec2f vel;         // Velocidad
-    float mass;          // Masa (default 1.0)
-    int id;             // Identificador único
-    float lastHitTime;  // Para cooldown (futuro)
+    ofVec2f home;            // Posición de reposo
+    ofVec2f pos;             // Posición actual
+    ofVec2f vel;             // Velocidad
+    float mass;              // Masa (default 1.0)
+    int id;                 // Identificador único
+    float lastHitTime;       // Tiempo del último hit (para cooldown)
+    ofVec2f vel_pre;         // Velocidad PRE-colisión (para cálculo de energía)
+    float last_hit_distance; // Distancia recorrida desde último hit
+    int last_surface;        // Última superficie impactada (0=L, 1=R, 2=T, 3=B, -1=N/A)
 };
 ```
 
@@ -56,6 +59,38 @@ pos += vel * dt;
 - `k_home`: Constante de retorno (0.5-6.0)
 - `k_drag`: Constante de drag (0.5-3.0)
 
+#### `Particle::bounce(int surface, float restitution, float width, float height)`
+
+Aplica rebote físico cuando la partícula colisiona con un borde.
+
+**Algoritmo:**
+1. Si superficie es horizontal (0=L, 1=R):
+   - Invierte y amortigua velocidad X: `vel.x *= -restitution`
+   - Clampea posición X dentro de bordes: `pos.x = clamp(pos.x, 0, width)`
+2. Si superficie es vertical (2=T, 3=B):
+   - Invierte y amortigua velocidad Y: `vel.y *= -restitution`
+   - Clampea posición Y dentro de bordes: `pos.y = clamp(pos.y, 0, height)`
+
+**Parámetros:**
+- `surface`: Superficie impactada (0=L, 1=R, 2=T, 3=B)
+- `restitution`: Coeficiente de restitución (0.2-0.85)
+- `width`: Ancho de la ventana
+- `height`: Alto de la ventana
+
+**Nota:** El rebote se aplica solo en el eje perpendicular a la superficie impactada.
+
+#### `Particle::reset()`
+
+Resetea la partícula a su estado inicial.
+
+**Efectos:**
+- `pos = home`
+- `vel = (0, 0)`
+- `lastHitTime = 0`
+- `vel_pre = (0, 0)`
+- `last_hit_distance = 0`
+- `last_surface = -1`
+
 ---
 
 ## Clase ofApp
@@ -74,6 +109,30 @@ struct MouseEfector {
 };
 ```
 
+#### HitEvent
+
+```cpp
+struct HitEvent {
+    int id;              // ID de partícula
+    float x;             // Posición X normalizada (0..1)
+    float y;             // Posición Y normalizada (0..1)
+    float energy;        // Energía del impacto (0..1)
+    int surface;         // Superficie impactada (0=L, 1=R, 2=T, 3=B, -1=N/A)
+};
+```
+
+#### RateLimiter
+
+```cpp
+struct RateLimiter {
+    float tokens;         // Tokens disponibles
+    float rate;          // Tokens por segundo (max_hits_per_second)
+    float burst;         // Máximo de tokens acumulados
+    int max_per_frame;   // Límite por frame
+    int hits_this_frame; // Contador temporal
+};
+```
+
 ### Parámetros Físicos
 
 | Variable | Tipo | Rango | Default | Descripción |
@@ -84,6 +143,15 @@ struct MouseEfector {
 | `sigma` | `float` | 50-500 | 150.0 | Radio de influencia (px) |
 | `speed_ref` | `float` | 100-2000 | 500.0 | Velocidad de referencia (px/s) |
 | `smooth_alpha` | `float` | 0.1-0.25 | 0.15 | Factor de suavizado |
+| `restitution` | `float` | 0.2-0.85 | 0.6 | Coeficiente de rebote |
+| `hit_cooldown_ms` | `float` | 30-120 | 60.0 | Cooldown por partícula (ms) |
+| `vel_ref` | `float` | 300-1000 | 500.0 | Velocidad de referencia para energía (px/s) |
+| `dist_ref` | `float` | 20-100 | 50.0 | Distancia de referencia para energía (px) |
+| `energy_a` | `float` | 0.5-0.9 | 0.7 | Peso de velocidad en energía |
+| `energy_b` | `float` | 0.1-0.5 | 0.3 | Peso de distancia en energía |
+| `max_hits_per_second` | `float` | 50-500 | 200.0 | Máximo de hits por segundo |
+| `burst` | `float` | 100-500 | 300.0 | Burst máximo de tokens |
+| `max_hits_per_frame` | `int` | 5-20 | 10 | Máximo de hits por frame |
 
 ### Métodos Principales
 
@@ -92,7 +160,9 @@ struct MouseEfector {
 Inicializa:
 - Parámetros físicos con valores por defecto
 - Estructura `MouseEfector`
-- GUI con sliders
+- Rate limiter con valores iniciales
+- Contadores de debug (hits/seg, descartados)
+- GUI con sliders (incluyendo nuevos de Fase 4)
 - Sistema de partículas (grid + jitter)
 
 #### `ofApp::update()`
@@ -104,6 +174,9 @@ Loop principal de actualización (llamado cada frame):
 3. `updateMouseInput()` - Actualiza posición y velocidad del mouse
 4. `applyGestureForce()` - Aplica fuerza de gesto a partículas
 5. Actualiza física de todas las partículas
+6. `checkCollisions()` - Detecta colisiones con bordes y genera eventos
+7. `updateRateLimiter(dt)` - Actualiza tokens del rate limiter
+8. `processPendingHits()` - Procesa y valida eventos de hit
 
 #### `ofApp::updateMouseInput()`
 
@@ -172,6 +245,105 @@ Redimensiona el sistema de partículas en tiempo real.
 - Reinicializa todas las partículas con nuevo N
 - Preserva distribución grid+jitter
 - Seguro: no causa crashes
+
+#### `ofApp::checkCollisions()`
+
+Detecta colisiones de partículas con los bordes de la ventana y genera eventos de hit.
+
+**Algoritmo:**
+1. Para cada partícula:
+   - Guarda velocidad PRE-colisión: `vel_pre = vel`
+   - Verifica si está fuera de los bordes (margen de 0px)
+   - Si colisiona:
+     - Calcula superficie impactada (0=L, 1=R, 2=T, 3=B)
+     - Verifica cooldown: `timeNow - lastHitTime > hit_cooldown_ms`
+     - Si pasa cooldown:
+       - Calcula energía: `calculateHitEnergy(particle, surface)`
+       - Genera evento: `generateHitEvent(particle, surface)`
+       - Aplica rebote: `particle.bounce(surface, restitution, width, height)`
+       - Actualiza `lastHitTime` y `last_surface`
+
+**Superficies:**
+- `0` = Borde izquierdo (x < 0)
+- `1` = Borde derecho (x > width)
+- `2` = Borde superior (y < 0)
+- `3` = Borde inferior (y > height)
+
+#### `ofApp::calculateHitEnergy(Particle& p, int surface)`
+
+Calcula la energía del impacto basada en velocidad y distancia.
+
+**Fórmulas:**
+```
+speed_norm = clamp(|vel_pre| / vel_ref, 0..1)
+dist_norm = clamp(last_hit_distance / dist_ref, 0..1)
+energy = clamp(energy_a * speed_norm + energy_b * dist_norm, 0..1)
+```
+
+**Parámetros:**
+- `p`: Referencia a la partícula
+- `surface`: Superficie impactada
+
+**Retorna:** Energía normalizada (0..1)
+
+#### `ofApp::generateHitEvent(Particle& p, int surface)`
+
+Genera un evento de hit y lo agrega a `pending_hits`.
+
+**Algoritmo:**
+1. Calcula energía: `energy = calculateHitEnergy(p, surface)`
+2. Crea `HitEvent`:
+   - `id = p.id`
+   - `x = p.pos.x / width` (normalizado)
+   - `y = p.pos.y / height` (normalizado)
+   - `energy = energy`
+   - `surface = surface`
+3. Agrega a `pending_hits`
+
+#### `ofApp::updateRateLimiter(float dt)`
+
+Actualiza el sistema de rate limiting (token bucket).
+
+**Algoritmo:**
+1. Acumula tokens: `tokens += rate * dt`
+2. Limita a burst: `tokens = min(tokens, burst)`
+3. Resetea contador de frame: `hits_this_frame = 0`
+
+**Parámetros:**
+- `dt`: Delta time en segundos
+
+#### `ofApp::canEmitHit()`
+
+Verifica si se puede emitir un hit (rate limiting).
+
+**Retorna:** `true` si:
+- `tokens >= 1.0`
+- `hits_this_frame < max_per_frame`
+
+#### `ofApp::consumeToken()`
+
+Consume un token del rate limiter.
+
+**Efectos:**
+- `tokens -= 1.0`
+- `hits_this_frame += 1`
+
+#### `ofApp::processPendingHits()`
+
+Procesa eventos pendientes y los valida con rate limiting.
+
+**Algoritmo:**
+1. Para cada evento en `pending_hits`:
+   - Si `canEmitHit()`:
+     - Consume token: `consumeToken()`
+     - Agrega a `validated_hits`
+     - Incrementa contadores de debug
+   - Si no:
+     - Incrementa `hits_discarded_rate`
+2. Limpia `pending_hits`
+3. Actualiza estadísticas (hits/seg, etc.)
+
+**Nota:** Los eventos en `validated_hits` están listos para enviarse por OSC (Fase 5).
 
 #### `ofApp::draw()`
 
@@ -270,6 +442,15 @@ Misma interfaz que mouse (`MouseEfector`), pero con datos de MediaPipe.
 | k_gesture | `kGestureSlider` | 0-200 | 50.0 |
 | sigma | `sigmaSlider` | 50-500 | 150.0 |
 | speed_ref | `speedRefSlider` | 100-2000 | 500.0 |
+| restitution | `restitutionSlider` | 0.2-0.85 | 0.6 |
+| hit_cooldown (ms) | `hitCooldownSlider` | 30-120 | 60.0 |
+| vel_ref | `velRefSlider` | 300-1000 | 500.0 |
+| dist_ref | `distRefSlider` | 20-100 | 50.0 |
+| energy_a | `energyASlider` | 0.5-0.9 | 0.7 |
+| energy_b | `energyBSlider` | 0.1-0.5 | 0.3 |
+| max_hits/s | `maxHitsPerSecondSlider` | 50-500 | 200.0 |
+| burst | `burstSlider` | 100-500 | 300.0 |
+| max_hits/frame | `maxHitsPerFrameSlider` | 5-20 | 10 |
 
 ### Actualización
 
@@ -291,6 +472,10 @@ Muestra en pantalla:
 - Número de partículas
 - Valores de parámetros principales
 - Velocidad del mouse (px/s)
+- Hits por segundo (promedio móvil)
+- Hits descartados (por rate limiting y cooldown)
+- Tokens disponibles en rate limiter
+- Eventos pendientes y validados
 
 **Ubicación:** Esquina superior izquierda (20, 20)
 
@@ -315,7 +500,7 @@ Muestra en pantalla:
 
 ## Estado de Implementación
 
-### Completado (Fase 2-3)
+### Completado (Fase 2-4)
 
 - ✅ Sistema de partículas básico
 - ✅ Fuerzas F_home y F_drag
@@ -324,12 +509,16 @@ Muestra en pantalla:
 - ✅ GUI con sliders
 - ✅ Rendering de puntos
 - ✅ Debug overlay
+- ✅ Detección de colisiones con bordes
+- ✅ Sistema de rebote con coeficiente de restitución
+- ✅ Cálculo de energía de impacto (velocidad + distancia)
+- ✅ Generación de eventos de hit
+- ✅ Cooldown por partícula
+- ✅ Rate limiting (token bucket)
+- ✅ Estadísticas de debug extendidas
 
 ### Pendiente (Fases Futuras)
 
-- ⏳ Colisiones con bordes (Fase 4)
-- ⏳ Generación de eventos (Fase 4)
-- ⏳ Rate limiting (Fase 4)
 - ⏳ Comunicación OSC (Fase 5)
 - ⏳ Integración MediaPipe (Fase 3b)
 
@@ -343,4 +532,4 @@ Muestra en pantalla:
 
 ---
 
-**Última actualización:** Fase 3 completada
+**Última actualización:** Fase 4 completada
