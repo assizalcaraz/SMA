@@ -45,11 +45,13 @@ void ofApp::draw(){
     // Render de partículas como puntos
     ofSetColor(255, 255, 255); // Blanco/azulado metálico
     glPointSize(2.0f);
-    ofBeginShape();
+    glEnable(GL_POINT_SMOOTH);
+    ofBeginShape(GL_POINTS);
     for (const auto& p : particles) {
         ofVertex(p.pos);
     }
     ofEndShape();
+    glDisable(GL_POINT_SMOOTH);
     
     // Debug overlay
     drawDebugOverlay();
