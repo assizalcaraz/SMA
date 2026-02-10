@@ -134,6 +134,18 @@ class ofApp : public ofBaseApp{
 		ofxFloatSlider cameraZoomSlider;
 		ofxFloatSlider cameraRotationSlider;
 		
+		// Plate Controller UI
+		ofxFloatSlider plateFreqSlider;
+		ofxFloatSlider plateAmpSlider;
+		ofxIntSlider plateModeSlider;
+		
+		// Plate Controller variables
+		float plateFreq;
+		float plateAmp;
+		int plateMode;
+		float plateSendTimer;
+		float plateSendInterval;  // 0.05s = 20 Hz
+		
 		// Funciones auxiliares
 		void initializeParticles(int n);
 		void resizeParticles(int newN);
@@ -157,6 +169,7 @@ class ofApp : public ofBaseApp{
 		void setupOSC();
 		void sendHitEvent(const HitEvent& event);
 		void sendStateMessage();
+		void sendPlateMessage();
 		float calculateActivity();            // Calcular actividad normalizada (0..1)
 		float calculateGesture();              // Calcular energía de gesto (0..1)
 		float calculatePresence();             // Calcular confianza tracking (0..1)

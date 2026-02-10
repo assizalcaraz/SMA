@@ -95,6 +95,16 @@ void ofApp::setup(){
     gui.add(cameraZoomSlider.setup("camera_zoom", cameraZoom, 0.1f, 5.0f));
     gui.add(cameraRotationSlider.setup("camera_rotation", cameraRotation, -180.0f, 180.0f));
     
+    // Plate Controller sliders
+    plateFreq = 440.0f;  // Frecuencia inicial (A4)
+    plateAmp = 0.0f;    // Amplitud inicial (silencio)
+    plateMode = 0;      // Modo inicial
+    plateSendInterval = 0.05f;  // 20 Hz
+    plateSendTimer = 0.0f;
+    gui.add(plateFreqSlider.setup("plate_freq (Hz)", plateFreq, 20.0f, 2000.0f));
+    gui.add(plateAmpSlider.setup("plate_amp", plateAmp, 0.0f, 1.0f));
+    gui.add(plateModeSlider.setup("plate_mode", plateMode, 0, 7));
+    
     // Inicializar partículas
     initializeParticles(initialN);
     
@@ -137,6 +147,11 @@ void ofApp::update(){
     // Actualizar parámetros de cámara
     cameraZoom = cameraZoomSlider;
     cameraRotation = cameraRotationSlider;
+    
+    // Actualizar parámetros de Plate Controller
+    plateFreq = plateFreqSlider;
+    plateAmp = plateAmpSlider;
+    plateMode = plateModeSlider;
     
     // Detectar cambio en número de partículas
     int targetN = nParticlesSlider;
@@ -193,6 +208,13 @@ void ofApp::update(){
         if (stateSendTimer >= stateSendInterval) {
             sendStateMessage();
             stateSendTimer = 0.0f;
+        }
+        
+        // Enviar mensaje /plate con rate limiting (20-30 Hz)
+        plateSendTimer += dt;
+        if (plateSendTimer >= plateSendInterval) {
+            sendPlateMessage();
+            plateSendTimer = 0.0f;
         }
     }
     
@@ -857,6 +879,29 @@ void ofApp::sendStateMessage() {
     
     // Debug opcional
     // ofLogVerbose("ofApp") << "OSC /state: activity=" << activity;
+}
+
+//--------------------------------------------------------------
+void ofApp::sendPlateMessage() {
+    if (!oscEnabled) {
+        return;
+    }
+    
+    // Validar y clamp valores antes de enviar
+    float freq = ofClamp(plateFreq, 20.0f, 2000.0f);
+    float amp = ofClamp(plateAmp, 0.0f, 1.0f);
+    int mode = ofClamp(plateMode, 0, 7);
+    
+    ofxOscMessage msg;
+    msg.setAddress("/plate");
+    msg.addFloatArg(freq);  // float freq (20.0-2000.0 Hz)
+    msg.addFloatArg(amp);   // float amp (0.0-1.0)
+    msg.addIntArg(mode);    // int32 mode (0-7)
+    
+    oscSender.sendMessage(msg, false);
+    
+    // Debug opcional
+    // ofLogVerbose("ofApp") << "OSC /plate: freq=" << freq << " amp=" << amp << " mode=" << mode;
 }
 
 //--------------------------------------------------------------

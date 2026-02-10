@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "VoiceManager.h"
+#include "PlateSynth.h"
 
 //==============================================================================
 /**
@@ -60,6 +61,9 @@ public:
                              ModalVoice::ExcitationWaveform waveform = ModalVoice::ExcitationWaveform::Noise,
                              float subOscMix = 0.0f);
 
+    /** Trigger plate desde OSC - RT-safe: actualiza atomic */
+    void triggerPlateFromOSC(float freq, float amp, int mode);
+
     /** Obtiene el número de voces activas */
     int getActiveVoiceCount() const;
 
@@ -75,6 +79,7 @@ private:
     static constexpr int EVENT_QUEUE_SIZE = 64;  // Tamaño de la cola de eventos
     
     VoiceManager voiceManager;
+    PlateSynth plateSynth;
     
     // Sample rate actual
     double currentSampleRate = 44100.0;
@@ -101,6 +106,10 @@ private:
     // Medición de nivel de salida
     float outputLevel = 0.0f;
     float outputLevelDecay = 0.999f; // Decay para RMS
+    
+    // Buffer temporal para plate (RT-safe: pre-allocado, tamaño máximo)
+    static constexpr int MAX_BLOCK_SIZE = 2048; // Tamaño máximo de bloque esperado
+    juce::AudioBuffer<float> plateBuffer;
     
     // Parámetros previos para detectar cambios (RT-safe: solo lectura desde audio thread)
     float prevMetalness = 0.5f;

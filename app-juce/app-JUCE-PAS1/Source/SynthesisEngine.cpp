@@ -2,6 +2,7 @@
 
 //==============================================================================
 SynthesisEngine::SynthesisEngine()
+    : plateBuffer(2, MAX_BLOCK_SIZE) // Pre-allocar buffer para 2 canales, tamaño máximo
 {
     reset();
 }
@@ -11,11 +12,17 @@ void SynthesisEngine::prepare(double sampleRate)
 {
     currentSampleRate = sampleRate;
     voiceManager.prepare(sampleRate, maxVoices.load());
+    plateSynth.prepare(sampleRate);
     outputLevel = 0.0f;
     
     // Ajustar decay rate del nivel según sample rate
     // Decay de ~100ms
     outputLevelDecay = std::exp(-1.0f / (0.1f * (float)sampleRate));
+    
+    // Preparar buffer de plate (RT-safe: pre-allocar tamaño máximo esperado)
+    // Nota: El tamaño real se ajustará dinámicamente si es necesario, pero esto
+    // debería ser raro ya que prepare() se llama cuando cambia el buffer size
+    plateBuffer.setSize(2, MAX_BLOCK_SIZE, false, false, true);
     
     // Inicializar valores previos de parámetros globales
     prevMetalness = metalness.load();
@@ -57,6 +64,32 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
     
     // Renderizar voces
     voiceManager.renderNextBlock(buffer, startSample, numSamples);
+    
+    // Renderizar plate y sumar al buffer (pre-limiter)
+    // RT-SAFE: Usar buffer pre-allocado en prepare()
+    int numChannels = buffer.getNumChannels();
+    
+    // Limpiar y renderizar plate en buffer temporal
+    // Usar una vista del buffer pre-allocado para el tamaño necesario
+    juce::AudioBuffer<float> plateView(plateBuffer.getArrayOfWritePointers(), 
+                                        juce::jmin(numChannels, plateBuffer.getNumChannels()), 
+                                        0, 
+                                        juce::jmin(numSamples, plateBuffer.getNumSamples()));
+    plateView.clear();
+    plateSynth.renderNextBlock(plateView, 0, plateView.getNumSamples());
+    
+    // Sumar plate a buffer principal (pre-limiter)
+    int safeSamples = juce::jmin(numSamples, plateView.getNumSamples());
+    int safeChannels = juce::jmin(numChannels, plateView.getNumChannels());
+    for (int channel = 0; channel < safeChannels; channel++)
+    {
+        float* mainData = buffer.getWritePointer(channel, startSample);
+        const float* plateData = plateView.getReadPointer(channel, 0);
+        for (int sample = 0; sample < safeSamples; sample++)
+        {
+            mainData[sample] += plateData[sample];
+        }
+    }
     
     // Aplicar procesamiento master (solo limiter)
     bool currentLimiterEnabled = limiterEnabled.load();
@@ -216,7 +249,15 @@ float SynthesisEngine::getOutputLevel() const
 void SynthesisEngine::reset()
 {
     voiceManager.resetAll();
+    plateSynth.reset();
     outputLevel = 0.0f;
+}
+
+//==============================================================================
+void SynthesisEngine::triggerPlateFromOSC(float freq, float amp, int mode)
+{
+    // RT-SAFE: Llamar a PlateSynth que usa atomic internamente
+    plateSynth.triggerPlate(freq, amp, mode);
 }
 
 //==============================================================================

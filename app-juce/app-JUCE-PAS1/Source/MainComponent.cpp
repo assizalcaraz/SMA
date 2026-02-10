@@ -326,6 +326,10 @@ void MainComponent::oscMessageReceived(const juce::OSCMessage& message)
     {
         updateOSCState(message);
     }
+    else if (address == "/plate")
+    {
+        mapOSCPlateToEvent(message);
+    }
     // Silently ignore unknown addresses (no crash, no log spam)
 }
 
@@ -435,4 +439,30 @@ void MainComponent::updateOSCState(const juce::OSCMessage& message)
     
     // Optional: Apply presence to master level (could be implemented in SynthesisEngine)
     // For now, we store it but don't apply it
+}
+
+//==============================================================================
+void MainComponent::mapOSCPlateToEvent(const juce::OSCMessage& message)
+{
+    // Validate message format: /plate freq(float) amp(float) mode(int32)
+    if (message.size() != 3)
+    {
+        // Malformed message - silently discard
+        return;
+    }
+    
+    // Extract and validate arguments
+    if (!message[0].isFloat32() || !message[1].isFloat32() || !message[2].isInt32())
+    {
+        // Wrong argument types - silently discard
+        return;
+    }
+    
+    // Extract values and clamp to valid ranges
+    float freq = juce::jlimit(20.0f, 2000.0f, message[0].getFloat32());
+    float amp = juce::jlimit(0.0f, 1.0f, message[1].getFloat32());
+    int mode = juce::jlimit(0, 7, message[2].getInt32());
+    
+    // Trigger plate synth through RT-safe method (to be implemented in SynthesisEngine)
+    synthesisEngine.triggerPlateFromOSC(freq, amp, mode);
 }

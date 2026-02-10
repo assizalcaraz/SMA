@@ -94,6 +94,7 @@ private:
     // OSC parameter mapping
     void mapOSCHitToEvent(const juce::OSCMessage& message);
     void updateOSCState(const juce::OSCMessage& message);
+    void mapOSCPlateToEvent(const juce::OSCMessage& message);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };
