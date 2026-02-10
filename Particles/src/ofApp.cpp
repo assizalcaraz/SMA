@@ -429,13 +429,27 @@ void ofApp::applyPlateForce() {
     float winWidth = ofGetWidth();
     float winHeight = ofGetHeight();
     
-    // Mapear plateMode (0-7) a modos de Chladni (m, n)
-    // Modos típicos de placa cuadrada: (m,n) donde m y n son números de líneas nodales
+    // ============================================================
+    // 1. SISTEMA DE COORDENADAS DE PLACA FIJO (centro inmutable)
+    // ============================================================
+    // Centro de la placa: siempre el centro de la ventana (FIJO)
+    float plateCenterX = winWidth * 0.5f;
+    float plateCenterY = winHeight * 0.5f;
+    
+    // Tamaño de la placa: usar toda la ventana (FIJO)
+    float plateSizeX = winWidth;
+    float plateSizeY = winHeight;
+    
+    // ============================================================
+    // 2. MAPEO DE plate_mode → (m, n) - SOLO PATRÓN ESPACIAL
+    // ============================================================
+    // plate_mode define el patrón espacial (nodos/antinodos)
+    // NO debe depender de freq - el patrón es estacionario
     int m, n;
     switch (plateMode) {
         case 0: m = 1; n = 1; break;  // Modo fundamental
-        case 1: m = 2; n = 1; break;  // 2 líneas horizontales, 1 vertical
-        case 2: m = 1; n = 2; break;  // 1 línea horizontal, 2 verticales
+        case 1: m = 1; n = 2; break;  // 1 línea horizontal, 2 verticales
+        case 2: m = 2; n = 1; break;  // 2 líneas horizontales, 1 vertical
         case 3: m = 2; n = 2; break;  // 2x2 grid
         case 4: m = 3; n = 1; break;  // 3 líneas horizontales
         case 5: m = 1; n = 3; break;  // 3 líneas verticales
@@ -444,60 +458,92 @@ void ofApp::applyPlateForce() {
         default: m = 1; n = 1; break;
     }
     
-    // Escala de frecuencia: mapear plateFreq a escala de modos
-    // Frecuencias más altas = modos más altos (más líneas nodales)
-    float freqScale = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
-    float effectiveM = m * (1.0f + freqScale * 2.0f); // Escalar m según frecuencia
-    float effectiveN = n * (1.0f + freqScale * 2.0f); // Escalar n según frecuencia
+    // ============================================================
+    // 3. FRECUENCIA SOLO PARA INTENSIDAD/ANIMACIÓN TEMPORAL
+    // ============================================================
+    // plate_freq NO modifica el patrón espacial
+    // Solo se usa para intensidad de excitación
+    float freqNorm = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
+    float excitationIntensity = 0.5f + freqNorm * 0.5f; // 0.5 a 1.0
     
-    // Intensidad de fuerza proporcional a amplitud
-    float forceIntensity = plateForceStrength * plateAmp;
+    // Intensidad de fuerza: combina amplitud y frecuencia (solo para intensidad)
+    float forceIntensity = plateForceStrength * plateAmp * excitationIntensity;
+    
+    // ============================================================
+    // 4. CAMPO DE CHLADNI ESTACIONARIO (solo depende de modo y posición)
+    // ============================================================
+    const float PI_VAL = 3.14159265358979323846f;
     
     // Aplicar fuerza a cada partícula basada en campo de Chladni
     float dt = ofGetLastFrameTime();
     if (dt <= 0.0f) dt = 0.016f;
     
     for (auto& p : particles) {
-        // Normalizar posición de partícula a rango [0, 1]
-        float xNorm = ofClamp(p.pos.x / winWidth, 0.0f, 1.0f);
-        float yNorm = ofClamp(p.pos.y / winHeight, 0.0f, 1.0f);
+        // ============================================================
+        // 4a. TRANSFORMAR: pos_world → pos_plate → (x̂, ŷ) normalizado
+        // ============================================================
+        // Convertir posición de partícula a coordenadas locales de placa
+        float xLocal = p.pos.x - plateCenterX;  // Coordenada local respecto al centro FIJO
+        float yLocal = p.pos.y - plateCenterY;
         
-        // Calcular campo de vibración de Chladni usando funciones seno/coseno
-        // Para placa cuadrada con bordes fijos (antinodos en bordes):
-        // Campo = sin(m*π*x) * sin(n*π*y)
-        // Los nodos están donde el campo es cero o mínimo
-        // Los antinodos están donde el campo es máximo
+        // Normalizar a rango [0, 1] para que coincida con sin(mπx) donde x ∈ [0,1]
+        // Mapear [-size/2, +size/2] → [0, 1]
+        float xHat = 0.5f + (xLocal / plateSizeX) * 0.5f;
+        float yHat = 0.5f + (yLocal / plateSizeY) * 0.5f;
         
-        // Usar constante PI de openFrameworks (definida en ofConstants.h)
-        const float PI_VAL = 3.14159265358979323846f;
+        // Clamp para asegurar que esté dentro de la placa
+        xHat = ofClamp(xHat, 0.0f, 1.0f);
+        yHat = ofClamp(yHat, 0.0f, 1.0f);
         
-        float chladniField = sin(effectiveM * PI_VAL * xNorm) * sin(effectiveN * PI_VAL * yNorm);
+        // ============================================================
+        // 4b. CALCULAR CAMPO ESTACIONARIO U(x̂, ŷ) = sin(mπx̂) * sin(nπŷ)
+        // ============================================================
+        // Este es el modo propio estacionario - NO depende de tiempo ni frecuencia
+        float U_field = sin(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
         
-        // Calcular gradiente del campo (dirección hacia nodos)
-        // Gradiente negativo = dirección hacia nodos (donde campo es mínimo)
-        float gradX = -effectiveM * PI_VAL * cos(effectiveM * PI_VAL * xNorm) * sin(effectiveN * PI_VAL * yNorm);
-        float gradY = -effectiveN * PI_VAL * sin(effectiveM * PI_VAL * xNorm) * cos(effectiveN * PI_VAL * yNorm);
+        // Magnitud del campo (energía de vibración en ese punto)
+        // |U| alto = antinodo (vibra mucho)
+        // |U| bajo ≈ 0 = nodo (no vibra, donde se acumula material)
+        float fieldMagnitude = fabs(U_field);
         
-        // Normalizar gradiente para obtener dirección
-        ofVec2f gradientDir = ofVec2f(gradX, gradY);
-        float gradMag = gradientDir.length();
+        // ============================================================
+        // 4c. CALCULAR GRADIENTE DEL CAMPO (dirección hacia nodos)
+        // ============================================================
+        // Gradiente de U en coordenadas normalizadas
+        float dU_dxHat = m * PI_VAL * cos(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
+        float dU_dyHat = n * PI_VAL * sin(m * PI_VAL * xHat) * cos(n * PI_VAL * yHat);
         
-        if (gradMag > 0.001f) {
-            gradientDir.normalize();
-        } else {
-            continue; // En un nodo exacto, no aplicar fuerza
+        // Convertir gradiente de coordenadas normalizadas a coordenadas mundo
+        // (escalar por tamaño de placa para mantener unidades correctas)
+        float gradX_world = dU_dxHat / plateSizeX;
+        float gradY_world = dU_dyHat / plateSizeY;
+        
+        ofVec2f gradient = ofVec2f(gradX_world, gradY_world);
+        float gradMag = gradient.length();
+        
+        if (gradMag < 0.0001f) {
+            // Estamos muy cerca de un nodo exacto, no aplicar fuerza
+            continue;
         }
         
-        // Intensidad de fuerza basada en magnitud del campo
-        // Partículas en antinodos (campo alto) → más fuerza hacia nodos
-        // Partículas cerca de nodos (campo bajo) → menos fuerza
-        float fieldMagnitude = fabs(chladniField);
+        // Normalizar gradiente
+        gradient.normalize();
+        
+        // ============================================================
+        // 4d. FUERZA HACIA NODOS (gradiente negativo del campo)
+        // ============================================================
+        // Las partículas se mueven "cuesta abajo" hacia nodos
+        // Fuerza proporcional a:
+        // - fieldMagnitude: más fuerza en antinodos (donde vibra más)
+        // - forceIntensity: controlado por amp y freq (solo intensidad)
         float forceScale = fieldMagnitude * forceIntensity;
         
-        // Aplicar fuerza hacia nodos (dirección del gradiente negativo)
-        ofVec2f F_plate = gradientDir * forceScale;
+        // Dirección: opuesta al gradiente (hacia nodos donde U es mínimo)
+        ofVec2f F_plate = -gradient * forceScale;
         
-        // Aplicar fuerza directamente a la velocidad (impulso)
+        // ============================================================
+        // 4e. APLICAR FUERZA
+        // ============================================================
         p.vel += (F_plate / p.mass) * dt;
     }
 }
