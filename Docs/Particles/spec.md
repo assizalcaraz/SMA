@@ -401,7 +401,7 @@ Procesa eventos pendientes y los valida con rate limiting.
 2. Limpia `pending_hits`
 3. Actualiza estadísticas (hits/seg, etc.)
 
-**Nota:** Los eventos en `validated_hits` están listos para enviarse por OSC (Fase 5).
+**Nota:** Los eventos en `validated_hits` se envían automáticamente por OSC (Fase 5 completada).
 
 #### `ofApp::draw()`
 
@@ -647,7 +647,7 @@ Muestra en pantalla:
 
 ### Pendiente (Fases Futuras)
 
-- ⏳ Comunicación OSC (Fase 5)
+- ✅ Comunicación OSC (Fase 5) - Completada
 - ⏳ Integración MediaPipe (Fase 3b)
 
 ---

@@ -54,12 +54,14 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
   - Cooldown por partícula
   - Estadísticas de debug
 
-### ⏳ En Desarrollo
+### ✅ Completado (Continuación)
 
-- **Fase 5**: Comunicación OSC
-  - Integración de ofxOsc
-  - Envío de mensajes /hit
-  - Configuración de host y puerto
+- **Fase 5**: Comunicación OSC ✅ **COMPLETADA**
+  - ✅ Integración de ofxOsc
+  - ✅ Envío de mensajes /hit
+  - ✅ Envío de mensajes /state (opcional)
+  - ✅ Configuración de host y puerto (127.0.0.1:9000)
+  - ✅ Validación de mensajes antes de envío
 
 ### 📋 Pendiente
 
@@ -109,7 +111,7 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
 - **openFrameworks** 0.12.1
 - **ofxGui** — Para interfaz de parámetros
 - **OpenGL** — Para rendering
-- **ofxOsc** — Para comunicación OSC (pendiente)
+- **ofxOsc** — Para comunicación OSC ✅ implementado
 
 ---
 

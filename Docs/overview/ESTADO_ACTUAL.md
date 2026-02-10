@@ -59,12 +59,13 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Rate limiting global
 - ✅ Formato final de `/hit` (contrato congelado)
 
-**Fase 5: Comunicación OSC**
-- ⏳ Integración de `ofxOsc`
-- ⏳ Envío de mensajes `/hit`
-- ⏳ Envío de mensajes `/state` (opcional)
-- ⏳ Configuración de host y puerto
-- ⏳ Validación de mensajes antes de envío
+**Fase 5: Comunicación OSC** ✅ **COMPLETADA**
+- ✅ Integración de `ofxOsc`
+- ✅ Envío de mensajes `/hit`
+- ✅ Envío de mensajes `/state` (opcional)
+- ✅ Configuración de host y puerto (127.0.0.1:9000)
+- ✅ Validación de mensajes antes de envío
+- ✅ **Confirmado funcionando**: app-juce recibe correctamente los hits y el sintetizador responde
 
 #### App B - JUCE
 
