@@ -60,10 +60,10 @@ void PlateSynth::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSamp
         float amp = currentAmp.load();
         int mode = currentMode.load();
         
-        // Actualizar coeficientes solo si cambió algo
-        if (std::abs(freq - prevFreq) > 0.1f || 
-            std::abs(amp - prevAmp) > 0.001f || 
-            mode != prevMode)
+        // Actualizar coeficientes solo si cambió algo significativamente
+        // Usar umbrales más grandes para reducir actualizaciones innecesarias
+        if (std::abs(freq - prevFreq) > 1.0f ||  // Cambió de 0.1f a 1.0f para reducir updates
+            mode != prevMode)  // Removido check de amp (no afecta coeficientes)
         {
             updateFilterCoefficients();
             prevFreq = freq;
@@ -75,15 +75,26 @@ void PlateSynth::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSamp
     // Leer amplitud actual (atomic, thread-safe)
     float amp = currentAmp.load();
     
+    // Optimización: Si amplitud es muy baja, no procesar (ahorro de CPU)
+    if (amp < 0.001f && fadeOutGain < 0.001f)
+    {
+        // Silencio total, solo limpiar buffer
+        buffer.clear(startSample, numSamples);
+        return;
+    }
+    
     // Renderizar para cada canal
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
         float* channelData = buffer.getWritePointer(channel, startSample);
         
+        // Aplicar fade-out gain una vez (optimización)
+        float effectiveAmp = amp * fadeOutGain;
+        
         for (int sample = 0; sample < numSamples; sample++)
         {
             // Generar ruido blanco como excitación
-            float noise = (noiseGen.nextFloat() * 2.0f - 1.0f) * amp;
+            float noise = (noiseGen.nextFloat() * 2.0f - 1.0f) * effectiveAmp;
             
             // Procesar por cada modo resonante y sumar
             float output = 0.0f;
@@ -91,9 +102,6 @@ void PlateSynth::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSamp
             {
                 output += modes[i].process(noise);
             }
-            
-            // Aplicar fade-out gain (fail-safe)
-            output *= fadeOutGain;
             
             // Escribir al buffer
             channelData[sample] = output;
@@ -191,11 +199,21 @@ void PlateSynth::updateFilterCoefficients()
     float freq = currentFreq.load();
     int mode = currentMode.load();
     
+    // Limitar frecuencia base a rango seguro (evitar problemas numéricos)
+    freq = juce::jlimit(20.0f, 2000.0f, freq);
+    
+    // Calcular frecuencia Nyquist (mitad del sample rate)
+    float nyquistFreq = (float)currentSampleRate * 0.5f;
+    float maxSafeFreq = nyquistFreq * 0.95f; // 95% de Nyquist para seguridad
+    
     // Actualizar coeficientes de cada filtro resonante
     for (int i = 0; i < NUM_PLATE_MODES; i++)
     {
         // Calcular frecuencia del modo
         float modeFreq = freq * getInharmonicFactor(i, mode);
+        
+        // Limitar frecuencia del modo a rango seguro (evitar aliasing e inestabilidad)
+        modeFreq = juce::jlimit(20.0f, maxSafeFreq, modeFreq);
         
         // Calcular ganancia del modo
         float modeGain = getModeGain(i, mode);

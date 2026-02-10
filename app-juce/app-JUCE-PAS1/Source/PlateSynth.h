@@ -112,7 +112,7 @@ private:
     float prevAmp = 0.0f;
     int prevMode = 0;
     int parameterUpdateCounter = 0;
-    static constexpr int PARAMETER_UPDATE_INTERVAL = 4; // Actualizar cada 4 bloques
+    static constexpr int PARAMETER_UPDATE_INTERVAL = 8; // Actualizar cada 8 bloques (~18ms a 48kHz/512) - reducido para mejor rendimiento
     
     //==============================================================================
     /** Calcula factores inarmónicos según modo de placa */
