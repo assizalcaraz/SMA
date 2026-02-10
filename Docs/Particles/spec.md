@@ -2,7 +2,7 @@
 
 Especificación técnica detallada del módulo de partículas. Documentación para desarrolladores.
 
-**Última actualización:** Fase 4 completada
+**Última actualización:** Fase 4 completada + Mejoras Chladni (2026-02-10)
 
 ---
 
@@ -218,6 +218,88 @@ w = exp(-(r²) / (2 * sigma²))
 Donde:
 - `r` = distancia en pixels desde partícula al mouse
 - `sigma` = radio de influencia (50-500 pixels)
+
+#### `ofApp::getModeCoefficients(int mode, int& m, int& n, float& a, float& b)`
+
+Mapea `plate_mode` a parámetros de modo de Chladni y coeficientes de mezcla para modos degenerados.
+
+**Parámetros:**
+- `mode`: Modo de placa (0-7)
+- `m`, `n`: Números de modo (salida)
+- `a`, `b`: Coeficientes de mezcla (salida), donde `a² + b² = 1`
+
+**Comportamiento:**
+- Para modos simétricos (m == n): `a = 1.0`, `b = 0.0` (comportamiento original)
+- Para modos degenerados (m != n): `a = b = 0.707106781f` (√2/2, mezcla 50/50)
+
+**Mapeo de modos:**
+- `0`: m=1, n=1 (fundamental, simétrico)
+- `1`: m=1, n=2 (degenerado)
+- `2`: m=2, n=1 (degenerado)
+- `3`: m=2, n=2 (simétrico)
+- `4`: m=3, n=1 (degenerado)
+- `5`: m=1, n=3 (degenerado)
+- `6`: m=3, n=2 (degenerado)
+- `7`: m=2, n=3 (degenerado)
+
+#### `ofApp::applyPlateForce()`
+
+Aplica fuerza de placa de Chladni a todas las partículas basada en modos de vibración estacionarios.
+
+**Algoritmo:**
+
+1. **Sistema de coordenadas fijo:**
+   - Centro de placa: siempre el centro de la ventana (inmutable)
+   - Transformación: `pos_world → pos_plate → (x̂, ŷ) normalizado [0,1]`
+
+2. **Mapeo de modo:**
+   - Obtiene (m, n) y coeficientes (a, b) mediante `getModeCoefficients()`
+
+3. **Campo estacionario con mezcla de modos degenerados:**
+   - Calcula ambos términos: `U1 = sin(mπx̂) * sin(nπŷ)`, `U2 = sin(nπx̂) * sin(mπŷ)`
+   - Combina: `U = a * U1 + b * U2`
+   - Calcula y combina gradientes: `∇U = a * ∇U1 + b * ∇U2`
+
+4. **Normalización por modo:**
+   - Factor: `norm_factor = 1.0 / (m + n)`
+   - Normaliza: `U_norm = U * norm_factor`, `∇U_norm = ∇U * norm_factor`
+   - Evita que modos altos dominen por gradientes más pronunciados
+
+5. **Energía y gradiente de energía:**
+   - `E = U_norm²`
+   - `∇E = 2U_norm * ∇U_norm`
+   - Fuerza: `F = -∇E * forceIntensity * spatial_weight`
+
+6. **Centrado suave de excitación:**
+   - Distancia normalizada: `dist_norm = sqrt((xHat - 0.5)² + (yHat - 0.5)²)`
+   - Peso gaussiano: `spatial_weight = exp(-dist_norm² / (2σ²))`
+   - Reduce fuerza en bordes, centra excitación
+
+7. **Estabilidad:**
+   - Clamp de magnitud: `|F| ≤ F_MAX` (F_MAX = 100.0)
+   - Amortiguación cerca de nodos: si `|U_norm| < THRESHOLD_NODE` (0.1):
+     - `damping_factor = 1.0 / (1.0 + EXTRA_DAMPING * (1.0 - |U_norm|/THRESHOLD_NODE))`
+     - Aplica: `p.vel *= damping_factor` (reduce velocidad, adhiere a líneas nodales)
+
+**Fórmulas clave:**
+```
+U = a * sin(mπx̂) * sin(nπŷ) + b * sin(nπx̂) * sin(mπŷ)
+E = U_norm²
+∇E = 2U_norm * ∇U_norm
+F = -∇E * forceIntensity * spatial_weight
+```
+
+**Parámetros de estabilidad:**
+- `F_MAX = 100.0f`: Límite de magnitud de fuerza
+- `THRESHOLD_NODE = 0.1f`: Umbral de |U| para activar amortiguación extra
+- `EXTRA_DAMPING = 0.3f`: Fuerza de amortiguación adicional
+- `SIGMA_SPATIAL = 0.4f`: Ancho gaussiano para centrado (coordenadas normalizadas)
+
+**Características físicas:**
+- Campo estacionario: no depende de tiempo ni frecuencia
+- `plate_freq` solo afecta intensidad de excitación, no el patrón espacial
+- Partículas se mueven hacia nodos (donde U ≈ 0)
+- Modos degenerados se mezclan para restaurar simetría
 
 #### `ofApp::initializeParticles(int n)`
 
@@ -442,11 +524,12 @@ Renderiza el frame:
 
 Para cada partícula:
 ```
-F_total = F_home + F_drag + F_gesture
+F_total = F_home + F_drag + F_gesture + F_plate
 ```
 
 Donde:
 - `F_home = k_home * (home - pos)` - Retorno al origen
+- `F_plate = -∇E * forceIntensity * spatial_weight` - Fuerza de placa de Chladni (ver `applyPlateForce()`)
 - `F_drag = -k_drag * vel` - Amortiguación
 - `F_gesture = k_gesture * w * speed * dir` - Fuerza de gesto (si aplica)
 
@@ -660,4 +743,4 @@ Muestra en pantalla:
 
 ---
 
-**Última actualización:** Fase 4 completada
+**Última actualización:** Fase 4 completada + Mejoras Chladni (2026-02-10)

@@ -101,6 +101,13 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Sistema de coordenadas fijo (centro inmutable en centro de ventana)
   - Campo estacionario U(x̂,ŷ) = sin(mπx̂)*sin(nπŷ) según teoría de Chladni
   - Partículas se acumulan en nodos (líneas nodales estacionarias)
+- ✅ **Mejoras de simetría y estabilidad** (2026-02-10):
+  - Mezcla de modos degenerados para restaurar simetría en modos altos
+  - Fuerza basada en energía (E = U²) físicamente más correcta
+  - Normalización por modo para evitar dominancia de modos altos
+  - Centrado suave de excitación con peso gaussiano espacial
+  - Amortiguación adicional cerca de nodos para adherir partículas
+  - Clamp de magnitud de fuerza para mayor estabilidad
 - ⏳ **Pendiente**: Calibración de niveles y optimización (requiere testing en tiempo de ejecución)
 
 ---
@@ -157,6 +164,9 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Fuerzas físicas basadas en modos propios de vibración
   - Partículas se acumulan en líneas nodales según modo
   - Patrón espacial estacionario (no depende de frecuencia)
+  - Mezcla de modos degenerados para simetría en modos altos
+  - Fuerza basada en energía (E = U²) con normalización por modo
+  - Estabilidad mejorada con clamp de fuerza y amortiguación nodal
 
 **Documentación**: Completa en `Docs/Particles/`
 
@@ -305,4 +315,4 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ---
 
-**Última actualización**: 2026-02-10 (Sistema Plate implementado y corregido según física de Chladni)
+**Última actualización**: 2026-02-10 (Mejoras de simetría y estabilidad en simulación Chladni)

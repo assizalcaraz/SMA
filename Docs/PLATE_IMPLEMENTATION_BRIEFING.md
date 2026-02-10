@@ -289,14 +289,23 @@ Todas las fases del plan se han completado exitosamente:
   - Los nodos están donde `U ≈ 0` (estacionarios)
 - ✅ Movimiento hacia nodos:
   - Calcula gradiente del campo estacionario
-  - Fuerza en dirección opuesta al gradiente (hacia nodos)
+  - Fuerza basada en energía: `F = -∇E` donde `E = U²`
   - Intensidad proporcional a `|U|` (más fuerza en antinodos)
+
+**Mejoras implementadas (2026-02-10):**
+- ✅ **Mezcla de modos degenerados**: Para modos donde m ≠ n, combina ambos modos con coeficientes determinísticos (a, b) donde a² + b² = 1
+- ✅ **Fuerza basada en energía**: Cambio de `F = -∇U * |U|` a `F = -∇E` donde `E = U²`, físicamente más correcto
+- ✅ **Normalización por modo**: Factor `1/(m+n)` aplicado a U y ∇U antes de calcular E, evita que modos altos dominen
+- ✅ **Centrado suave de excitación**: Peso gaussiano espacial que reduce fuerza en bordes, centra excitación
+- ✅ **Estabilidad mejorada**: Clamp de magnitud de fuerza y amortiguación adicional cerca de nodos para adherir partículas a líneas nodales
 
 **Resultado:**
 - Patrón permanece fijo al cambiar `plate_freq` (solo cambia intensidad)
 - Centro no se mueve (siempre en centro de ventana)
 - Partículas se acumulan en líneas nodales según modo
+- Simetría restaurada en modos altos mediante mezcla de modos degenerados
 - Comportamiento físico correcto según teoría de Chladni
+- Mayor estabilidad y consistencia visual en modos altos
 
 ### Pendiente
 
