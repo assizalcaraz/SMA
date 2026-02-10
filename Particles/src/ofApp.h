@@ -65,6 +65,11 @@ class ofApp : public ofBaseApp{
 		float sigma;             // Radio de influencia (gaussiana)
 		float speed_ref;         // Velocidad de referencia
 		float smooth_alpha;      // Factor de suavizado (0.1-0.25)
+		float particleSize;     // Tamaño de partículas en píxeles (1.0-10.0)
+		
+		// Parámetros de cámara
+		float cameraZoom;       // Zoom de cámara (1.0 = sin zoom, >1.0 = zoom in, <1.0 = zoom out)
+		float cameraRotation;   // Rotación de cámara en grados
 		
 		// Parámetros de colisiones
 		float restitution;       // Coeficiente de restitución (0.2-0.85)
@@ -92,6 +97,7 @@ class ofApp : public ofBaseApp{
 		int hits_discarded_cooldown;      // Hits descartados por cooldown
 		int hits_this_second;             // Contador temporal para hits/seg
 		float time_accumulator;           // Acumulador de tiempo para hits/seg
+		int particles_rendered_this_frame; // Contador de partículas renderizadas en este frame
 		
 		// Vectores temporales
 		std::vector<HitEvent> pending_hits;    // Eventos generados en este frame
@@ -124,6 +130,9 @@ class ofApp : public ofBaseApp{
 		ofxFloatSlider maxHitsPerSecondSlider;
 		ofxFloatSlider burstSlider;
 		ofxIntSlider maxHitsPerFrameSlider;
+		ofxFloatSlider particleSizeSlider;
+		ofxFloatSlider cameraZoomSlider;
+		ofxFloatSlider cameraRotationSlider;
 		
 		// Funciones auxiliares
 		void initializeParticles(int n);

@@ -408,19 +408,31 @@ Procesa eventos pendientes y los valida con rate limiting.
 Renderiza el frame:
 
 1. Fondo oscuro: `ofBackground(10, 10, 15)`
-2. Render de partículas como puntos:
+2. Aplicar transformaciones de cámara:
    ```cpp
-   glPointSize(2.0f);
+   ofPushMatrix();
+   ofTranslate(centerX, centerY);
+   ofScale(cameraZoom, cameraZoom);
+   ofRotateDeg(cameraRotation);
+   ofTranslate(-centerX, -centerY);
+   ```
+3. Render de partículas como puntos:
+   ```cpp
+   glPointSize(particleSize);  // Tamaño variable desde slider
    glEnable(GL_POINT_SMOOTH);
    glBegin(GL_POINTS);
+   int rendered_count = 0;
    for (particle : particles) {
        glVertex2f(particle.pos.x, particle.pos.y);
+       rendered_count++;
    }
    glEnd();
    glDisable(GL_POINT_SMOOTH);
+   particles_rendered_this_frame = rendered_count;
    ```
-3. Debug overlay (FPS, N, parámetros)
-4. GUI (ofxGui panel)
+4. Restaurar transformaciones: `ofPopMatrix()`
+5. Debug overlay (FPS, N, parámetros, partículas renderizadas)
+6. GUI (ofxGui panel)
 
 ---
 
@@ -456,14 +468,63 @@ pos += vel * dt;
 ### Estilo Visual
 
 - **Partículas:** Puntos blancos (255, 255, 255)
-- **Tamaño:** 2.0 pixels (glPointSize)
+- **Tamaño:** Variable (1.0-10.0 pixels) controlado por `particleSize` slider
 - **Suavizado:** GL_POINT_SMOOTH habilitado
 - **Fondo:** Oscuro (10, 10, 15)
+
+### Transformaciones de Cámara
+
+El sistema aplica transformaciones de cámara antes del renderizado:
+
+1. **Zoom:** `ofScale(cameraZoom, cameraZoom)` - Escala uniforme
+2. **Rotación:** `ofRotateDeg(cameraRotation)` - Rotación en grados
+3. **Centro:** Transformaciones aplicadas desde el centro de la ventana
+
+**Implementación:**
+```cpp
+ofPushMatrix();
+float centerX = ofGetWidth() / 2.0f;
+float centerY = ofGetHeight() / 2.0f;
+ofTranslate(centerX, centerY);
+ofScale(cameraZoom, cameraZoom);
+ofRotateDeg(cameraRotation);
+ofTranslate(-centerX, -centerY);
+// Render partículas
+ofPopMatrix();
+```
+
+### Controles de Cámara
+
+#### Sliders
+
+- **camera_zoom:** Rango 0.1-5.0, valor por defecto 1.0
+- **camera_rotation:** Rango -180.0-180.0, valor por defecto 0.0
+
+#### Presets (Teclas 1-4)
+
+Implementados en `keyPressed(int key)`:
+
+- **Tecla '1':** Vista normal (zoom=1.0, rotación=0°)
+- **Tecla '2':** Zoom in (zoom=2.0, rotación=0°)
+- **Tecla '3':** Rotación 45° (zoom=1.0, rotación=45°)
+- **Tecla '4':** Vista amplia (zoom=0.5, rotación=0°)
+
+Los presets actualizan automáticamente los sliders en la GUI.
+
+### Diagnóstico de Renderizado
+
+Se agregó contador de partículas renderizadas para análisis:
+
+- **Variable:** `particles_rendered_this_frame` (int)
+- **Actualización:** En cada frame durante el renderizado
+- **Display:** Mostrado en debug overlay como "Particles (rendered): X / Y"
+
+Ver [RENDERING_ANALYSIS.md](RENDERING_ANALYSIS.md) para análisis detallado del problema de renderizado.
 
 ### Optimización
 
 - Renderizado en batch usando `glBegin(GL_POINTS)`
-- Sin transformaciones individuales por partícula
+- Transformaciones de cámara aplicadas una vez por frame (eficiente)
 - Eficiente para N alto (hasta 8000 partículas)
 
 ---
@@ -509,6 +570,9 @@ Misma interfaz que mouse (`MouseEfector`), pero con datos de MediaPipe.
 | max_hits/s | `maxHitsPerSecondSlider` | 50-500 | 200.0 |
 | burst | `burstSlider` | 100-500 | 300.0 |
 | max_hits/frame | `maxHitsPerFrameSlider` | 5-20 | 10 |
+| particle_size | `particleSizeSlider` | 1.0-10.0 | 2.0 |
+| camera_zoom | `cameraZoomSlider` | 0.1-5.0 | 1.0 |
+| camera_rotation | `cameraRotationSlider` | -180.0-180.0 | 0.0 |
 
 ### Actualización
 
@@ -527,7 +591,7 @@ Cambios se aplican inmediatamente (tiempo real).
 
 Muestra en pantalla:
 - FPS actual
-- Número de partículas
+- Número de partículas (total y renderizadas)
 - Valores de parámetros principales
 - Velocidad del mouse (px/s)
 - Hits por segundo (promedio móvil)
@@ -536,6 +600,8 @@ Muestra en pantalla:
 - Eventos pendientes y validados
 
 **Ubicación:** Esquina superior izquierda (20, 20)
+
+**v0.2:** Agregado contador de partículas renderizadas para diagnóstico de rendimiento.
 
 ---
 
@@ -558,7 +624,7 @@ Muestra en pantalla:
 
 ## Estado de Implementación
 
-### Completado (Fase 2-4)
+### Completado (Fase 2-4, v0.2)
 
 - ✅ Sistema de partículas básico
 - ✅ Fuerzas F_home y F_drag
@@ -574,6 +640,10 @@ Muestra en pantalla:
 - ✅ Cooldown por partícula
 - ✅ Rate limiting (token bucket)
 - ✅ Estadísticas de debug extendidas
+- ✅ Control de tamaño de partículas (v0.2)
+- ✅ Controles de cámara: zoom y rotación (v0.2)
+- ✅ Presets de cámara con teclas 1-4 (v0.2)
+- ✅ Contadores de diagnóstico de renderizado (v0.2)
 
 ### Pendiente (Fases Futuras)
 

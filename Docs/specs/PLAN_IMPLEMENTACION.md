@@ -839,6 +839,8 @@ Este orden permite validar el sistema completo antes de invertir tiempo en Media
 - Taggear versiones estables
 - **Taggear versión "mouse-only" como checkpoint seguro**
 
+**Ver también:** [Guía de workflow Git](../guides/GIT_WORKFLOW.md) para detalles sobre convenciones de commits y workflow /dia.
+
 ### Recursos útiles
 
 - Documentación openFrameworks: https://openframeworks.cc/documentation/

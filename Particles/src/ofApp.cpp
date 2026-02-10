@@ -3,6 +3,10 @@
 
 //--------------------------------------------------------------
 void ofApp::setup(){
+    // Inicializar contadores de debug
+    particles_rendered_this_frame = 0;
+    particleSize = 2.0f;  // Tamaño inicial
+    
     // Configurar parámetros iniciales
     // NOTA: Valores calibrados para facilitar que partículas lleguen a bordes con gestos normales
     // - k_gesture alto: más fuerza de gesto para empujar partículas
@@ -14,6 +18,9 @@ void ofApp::setup(){
     sigma = 200.0f;          // Aumentado de 150.0 para mayor área de influencia
     speed_ref = 300.0f;      // Reducido de 500.0 para que gestos normales se consideren más rápidos
     smooth_alpha = 0.15f;    // Factor de suavizado
+    particleSize = 2.0f;      // Tamaño inicial de partículas (píxeles)
+    cameraZoom = 1.0f;        // Sin zoom inicial
+    cameraRotation = 0.0f;    // Sin rotación inicial
     int initialN = 2000;
     
     // Parámetros de colisiones
@@ -81,6 +88,13 @@ void ofApp::setup(){
     gui.add(burstSlider.setup("burst", burst, 100.0f, 1000.0f));
     gui.add(maxHitsPerFrameSlider.setup("max_hits/frame", max_hits_per_frame, 5, 50));
     
+    // Slider de tamaño de partículas
+    gui.add(particleSizeSlider.setup("particle_size", particleSize, 1.0f, 10.0f));
+    
+    // Sliders de cámara
+    gui.add(cameraZoomSlider.setup("camera_zoom", cameraZoom, 0.1f, 5.0f));
+    gui.add(cameraRotationSlider.setup("camera_rotation", cameraRotation, -180.0f, 180.0f));
+    
     // Inicializar partículas
     initializeParticles(initialN);
     
@@ -116,6 +130,13 @@ void ofApp::update(){
     rate_limiter.rate = max_hits_per_second;
     rate_limiter.burst = burst;
     rate_limiter.max_per_frame = max_hits_per_frame;
+    
+    // Actualizar tamaño de partículas
+    particleSize = particleSizeSlider;
+    
+    // Actualizar parámetros de cámara
+    cameraZoom = cameraZoomSlider;
+    cameraRotation = cameraRotationSlider;
     
     // Detectar cambio en número de partículas
     int targetN = nParticlesSlider;
@@ -192,16 +213,35 @@ void ofApp::draw(){
     // Fondo oscuro
     ofBackground(10, 10, 15);
     
+    // Aplicar transformaciones de cámara
+    ofPushMatrix();
+    float centerX = ofGetWidth() / 2.0f;
+    float centerY = ofGetHeight() / 2.0f;
+    ofTranslate(centerX, centerY);
+    ofScale(cameraZoom, cameraZoom);
+    ofRotateDeg(cameraRotation);
+    ofTranslate(-centerX, -centerY);
+    
     // Render de partículas como puntos
     ofSetColor(255, 255, 255); // Blanco/azulado metálico
-    glPointSize(2.0f);
+    glPointSize(particleSize);  // Tamaño variable desde slider
     glEnable(GL_POINT_SMOOTH);
     glBegin(GL_POINTS);
+    
+    // Contador de partículas renderizadas (para debug)
+    int rendered_count = 0;
     for (const auto& p : particles) {
         glVertex2f(p.pos.x, p.pos.y);
+        rendered_count++;
     }
     glEnd();
     glDisable(GL_POINT_SMOOTH);
+    
+    // Restaurar transformaciones
+    ofPopMatrix();
+    
+    // Guardar contador para debug overlay
+    particles_rendered_this_frame = rendered_count;
     
     // Debug overlay
     drawDebugOverlay();
@@ -629,7 +669,8 @@ void ofApp::drawDebugOverlay() {
     ofSetColor(255, 255, 255);
     stringstream ss;
     ss << "FPS: " << ofGetFrameRate() << endl;
-    ss << "Particles: " << particles.size() << endl;
+    ss << "Particles (total): " << particles.size() << endl;
+    ss << "Particles (rendered): " << particles_rendered_this_frame << " / " << particles.size() << endl;
     ss << "k_home: " << k_home << endl;
     ss << "k_drag: " << k_drag << endl;
     ss << "k_gesture: " << k_gesture << endl;
@@ -664,7 +705,37 @@ void ofApp::drawDebugOverlay() {
 
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key){
-
+    // Presets de cámara con teclas 1-4
+    switch(key) {
+        case '1':
+            // Preset 1: Vista normal
+            cameraZoom = 1.0f;
+            cameraRotation = 0.0f;
+            cameraZoomSlider = cameraZoom;
+            cameraRotationSlider = cameraRotation;
+            break;
+        case '2':
+            // Preset 2: Zoom in centro
+            cameraZoom = 2.0f;
+            cameraRotation = 0.0f;
+            cameraZoomSlider = cameraZoom;
+            cameraRotationSlider = cameraRotation;
+            break;
+        case '3':
+            // Preset 3: Rotación 45°
+            cameraZoom = 1.0f;
+            cameraRotation = 45.0f;
+            cameraZoomSlider = cameraZoom;
+            cameraRotationSlider = cameraRotation;
+            break;
+        case '4':
+            // Preset 4: Vista amplia
+            cameraZoom = 0.5f;
+            cameraRotation = 0.0f;
+            cameraZoomSlider = cameraZoom;
+            cameraRotationSlider = cameraRotation;
+            break;
+    }
 }
 
 //--------------------------------------------------------------

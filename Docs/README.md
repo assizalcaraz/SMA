@@ -53,6 +53,7 @@ Documentación técnica de módulos y componentes del sistema.
 Guías específicas de procesos y mantenimiento.
 
 - **[Scopes de documentación](guides/SCOPES_DOCUMENTACION.md)** — Guía para actualizar documentación según cambios
+- **[Workflow Git](guides/GIT_WORKFLOW.md)** — Guía de control de versiones y convenciones de commits
 
 ---
 

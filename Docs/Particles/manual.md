@@ -2,7 +2,7 @@
 
 Manual de usuario del módulo de partículas. Guía completa de parámetros y uso.
 
-**Última actualización:** Fase 4 completada (colisiones y eventos)
+**Última actualización:** v0.2 - Controles visuales y cámara agregados
 
 **Ver también:**
 - [`readme.md`](readme.md) - Descripción general del módulo
@@ -29,6 +29,83 @@ Número total de partículas en el sistema. Controla la densidad visual y el ren
 - **Valores altos (5000-8000):** Alta densidad visual, puede impactar FPS
 
 **Nota:** El cambio es instantáneo y seguro. Las partículas se redistribuyen automáticamente en un grid con jitter.
+
+---
+
+## Parámetros Visuales
+
+### particle_size
+
+**Slider:** `particle_size`  
+**Tipo:** `float`  
+**Rango:** 1.0 - 10.0  
+**Valor por defecto:** 2.0  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Tamaño de las partículas en píxeles. Controla el tamaño visual de cada partícula renderizada.
+
+**Mapeo conceptual:**
+- **Partículas grandes (6.0-10.0):** Representan frecuencias graves, sonido más profundo
+- **Partículas pequeñas (1.0-3.0):** Representan frecuencias agudas, sonido más brillante
+- **Partículas medianas (3.0-6.0):** Representan frecuencias medias, balance
+
+**Efectos:**
+- **Valores bajos (1.0-2.0):** Partículas pequeñas, mayor densidad visual, mejor rendimiento
+- **Valores medios (2.0-5.0):** Balance entre visibilidad y densidad
+- **Valores altos (6.0-10.0):** Partículas grandes, menor densidad visual, puede impactar rendimiento
+
+**Uso:** Ajustar según el efecto visual deseado. Partículas grandes = timbre más grave, partículas pequeñas = timbre más agudo.
+
+---
+
+### Controles de Cámara
+
+El sistema incluye controles de cámara para cambiar la vista del sistema de partículas.
+
+#### camera_zoom
+
+**Slider:** `camera_zoom`  
+**Tipo:** `float`  
+**Rango:** 0.1 - 5.0  
+**Valor por defecto:** 1.0  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Controla el nivel de zoom de la cámara. Valores mayores a 1.0 acercan la vista, valores menores alejan.
+
+**Efectos:**
+- **Valores bajos (0.1-0.5):** Vista amplia, se ven más partículas pero más pequeñas
+- **Valor 1.0:** Vista normal, sin zoom
+- **Valores altos (2.0-5.0):** Zoom in, se ven menos partículas pero más grandes
+
+#### camera_rotation
+
+**Slider:** `camera_rotation`  
+**Tipo:** `float`  
+**Rango:** -180.0 - 180.0  
+**Valor por defecto:** 0.0  
+**Ajustable en tiempo real:** Sí
+
+**Descripción:**  
+Rotación de la cámara en grados. Permite rotar la vista del sistema de partículas.
+
+**Efectos:**
+- **0°:** Vista normal, sin rotación
+- **Valores positivos:** Rotación en sentido horario
+- **Valores negativos:** Rotación en sentido antihorario
+- **±180°:** Vista invertida
+
+#### Presets de Cámara (Teclas 1-4)
+
+El sistema incluye 4 presets de cámara que se pueden activar con las teclas numéricas:
+
+- **Tecla 1:** Vista normal (zoom=1.0, rotación=0°)
+- **Tecla 2:** Zoom in centro (zoom=2.0, rotación=0°)
+- **Tecla 3:** Rotación 45° (zoom=1.0, rotación=45°)
+- **Tecla 4:** Vista amplia (zoom=0.5, rotación=0°)
+
+Los presets actualizan automáticamente los sliders de cámara en la GUI.
 
 ---
 
@@ -539,6 +616,13 @@ max_hits/frame: 9
 - Sistema de rate limiting (token bucket)
 - Cálculo de energía de impacto
 - Generación de eventos de hit
+
+**v0.2 (Mejoras visuales):**
+- Agregado: `particle_size` - Control de tamaño de partículas con mapeo conceptual (grandes=graves, pequeñas=agudos)
+- Agregado: `camera_zoom` - Control de zoom de cámara
+- Agregado: `camera_rotation` - Control de rotación de cámara
+- Agregados: Presets de cámara (teclas 1-4)
+- Mejoras: Contadores de diagnóstico para análisis de renderizado
 
 ---
 
