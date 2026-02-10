@@ -87,6 +87,17 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Integración con cola lock-free existente
 - ⚠️ **Problemas conocidos**: Sliders no afectan el sonido significativamente, timbre suena más a "pluc" de madera que metálico
 
+**Fase 8: Sistema Plate Paralelo** ✅ **COMPLETADA** (2026-02-XX)
+- ✅ Plate Controller en openFrameworks (UI con sliders: freq, amp, mode)
+- ✅ Mensaje OSC `/plate` implementado y documentado
+- ✅ Receptor OSC `/plate` en JUCE con validación completa
+- ✅ PlateSynth implementado (clase independiente con 6 modos modales)
+- ✅ 8 modos de placa (0-7) con diferentes configuraciones tímbricas
+- ✅ Fail-safe con fade-out automático (2 segundos timeout)
+- ✅ Integración en SynthesisEngine (mezcla pre-limiter)
+- ✅ Thread-safe (atomic para parámetros, buffer pre-allocado)
+- ⏳ **Pendiente**: Calibración de niveles y optimización (requiere testing en tiempo de ejecución)
+
 ---
 
 ### 📋 Pendiente
@@ -154,24 +165,39 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - `ModalVoice.h/cpp` — Resonador modal individual ✅
 - `VoiceManager.h/cpp` — Gestión de polyphony ✅
 - `SynthesisEngine.h/cpp` — Motor de síntesis principal ✅
+- `PlateSynth.h/cpp` — **NUEVO** - Sintetizador de placa metálica ✅
 - `SynthParameters.h` — Parámetros globales ✅
 
 **Funcionalidades implementadas**:
-- ✅ Sintetizador modal con resonadores inarmónicos (2 modos por voz)
+- ✅ Sintetizador modal con resonadores inarmónicos (6 modos por voz en ModalVoice)
 - ✅ Sistema de polyphony con voice stealing (4-12 voces configurables)
-- ✅ Cola lock-free para eventos (preparada para OSC)
+- ✅ Cola lock-free para eventos de partículas
+- ✅ Receptor OSC para mensajes `/hit` y `/state`
+- ✅ Mapeo de parámetros OSC a síntesis de partículas
+- ✅ **PlateSynth** - Sintetizador de placa metálica paralelo:
+  - 6 modos modales resonantes
+  - 8 modos de placa (0-7) con diferentes timbres
+  - Excitación por ruido blanco continuo
+  - Fail-safe con fade-out automático
+- ✅ Receptor OSC para mensajes `/plate`
+- ✅ Mezcla pre-limiter (plate + partículas → limiter)
 - ✅ UI básica con controles y indicadores
 - ✅ Master limiter y saturación opcional
 - ✅ Optimizaciones RT-safe (sin allocations en audio thread)
-- ⏳ Receptor OSC (pendiente Fase 7)
-- ⏳ Mapeo de parámetros OSC (pendiente Fase 7)
 
 **Características técnicas**:
-- Modos resonantes: 2 por voz (optimizado para RT)
-- Excitación: noise burst de ~5ms (128 samples)
-- Voces: 4-12 configurables (por defecto: 8)
-- Límite de eventos: 16 por bloque de audio (MAX_HITS_PER_BLOCK)
-- Pre-allocation: hasta 32 voces (solo se activan según maxVoices)
+- **ModalVoice (partículas):**
+  - Modos resonantes: 6 por voz (optimizado para RT)
+  - Excitación: noise burst de ~5ms (128 samples)
+  - Voces: 4-12 configurables (por defecto: 8)
+  - Límite de eventos: 16 por bloque de audio (MAX_HITS_PER_BLOCK)
+  - Pre-allocation: hasta 32 voces (solo se activan según maxVoices)
+- **PlateSynth (placa):**
+  - Modos resonantes: 6 modos modales
+  - Excitación: ruido blanco continuo filtrado por amplitud
+  - Modos de placa: 8 configuraciones (0-7) con diferentes timbres
+  - Fail-safe: fade-out automático después de 2 segundos sin updates
+  - Thread-safe: parámetros usando atomic, buffer pre-allocado
 
 **Documentación**: Ver `PROMPT_FASE6.md` para detalles de implementación
 
@@ -181,11 +207,11 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ### Corto Plazo (Próximas 2-4 semanas)
 
-1. **Completar Fase 7**: Receptor OSC y mapeo
-   - Integrar receptor OSC en JUCE (puerto 9000)
-   - Conectar mensajes `/hit` a cola lock-free existente
-   - Implementar mapeo de parámetros OSC → síntesis
-   - Validar loop completo: oF → OSC → JUCE → Audio
+1. **Calibración del Sistema Plate** (Fase 6 pendiente)
+   - Ajustar niveles de mezcla entre plate y partículas
+   - Calibrar factores inarmónicos y ganancias de modos de placa
+   - Optimizar parámetros de fail-safe
+   - Profilar y optimizar CPU usage
 
 ### Mediano Plazo (1-2 meses)
 
@@ -214,9 +240,10 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 3. ✅ Colisiones y eventos
 4. ✅ Comunicación OSC
 5. ✅ Sintetizador JUCE básico
-6. ⏳ Receptor OSC y mapeo
-7. ⏳ Calibración conjunta
-8. ⏳ MediaPipe (opcional/tardía)
+6. ✅ Receptor OSC y mapeo (partículas)
+7. ✅ Sistema Plate paralelo (Plate Controller + PlateSynth)
+8. ⏳ Calibración conjunta (plate + partículas)
+9. ⏳ MediaPipe (opcional/tardía)
 
 ---
 
@@ -245,16 +272,18 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ## Métricas de Progreso
 
-- **Fases completadas**: 6 de 10 (60%)
+- **Fases completadas**: 8 de 10 (80%)
   - ✅ Fase 1: Setup inicial
   - ✅ Fase 2: Sistema de partículas básico
   - ✅ Fase 3: Input básico (Mouse)
   - ✅ Fase 4: Colisiones y eventos
   - ✅ Fase 5: Comunicación OSC
   - ✅ Fase 6: Sintetizador básico (JUCE Standalone)
+  - ✅ Fase 7: Receptor OSC y mapeo (partículas)
+  - ✅ Fase 8: Sistema Plate paralelo (Plate Controller + PlateSynth)
 - **Módulos funcionales**: 2 de 2 (100%)
-  - ✅ Particles (App A) - Completo
-  - ✅ Sintetizador JUCE (App B) - Básico funcionando (pendiente OSC)
+  - ✅ Particles (App A) - Completo (incluye Plate Controller)
+  - ✅ Sintetizador JUCE (App B) - Completo (partículas + plate)
 - **Documentación**: Completa para módulos implementados
 
 ---
@@ -267,4 +296,4 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ---
 
-**Última actualización**: 2025-02-09
+**Última actualización**: 2026-02-XX (Sistema Plate implementado)
