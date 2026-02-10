@@ -7,6 +7,7 @@ MainComponent::MainComponent()
     setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
     setupSlider(metalnessSlider, metalnessLabel, "Pitch", 0.0, 1.0, 0.5);
     setupSlider(subOscMixSlider, subOscMixLabel, "SubOsc Mix", 0.0, 1.0, 0.0);
+    setupSlider(plateVolumeSlider, plateVolumeLabel, "Plate Volume", 0.0, 1.0, 1.0);
     
     // Waveform selector
     waveformComboBox.addItem("Noise", 1);
@@ -192,6 +193,11 @@ void MainComponent::resized()
     subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
     subOscMixSlider.setBounds(subOscArea);
     
+    // Plate Volume slider
+    auto plateVolumeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    plateVolumeLabel.setBounds(plateVolumeArea.removeFromLeft(labelWidth));
+    plateVolumeSlider.setBounds(plateVolumeArea);
+    
     // Segunda columna de controles
     auto rightColumn = area.removeFromRight(350);
     
@@ -223,6 +229,33 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     else if (slider == &subOscMixSlider)
     {
         synthesisEngine.setSubOscMix((float)subOscMixSlider.getValue());
+    }
+    else if (slider == &plateVolumeSlider)
+    {
+        // Mapeo exponencial: slider 0.1 → volumen 0.5 (mitad del rango)
+        // slider 0.0 → volumen 0.0, slider 1.0 → volumen 1.0
+        float sliderValue = (float)plateVolumeSlider.getValue();
+        float volume;
+        
+        if (sliderValue <= 0.0f)
+        {
+            volume = 0.0f;
+        }
+        else if (sliderValue <= 0.1f)
+        {
+            // Mapeo exponencial de 0.0-0.1 a 0.0-0.5
+            // Usar exponente log(0.5) / log(0.1) ≈ 0.301
+            float normalized = sliderValue / 0.1f; // 0.0 a 1.0
+            volume = std::pow(normalized, 0.301f) * 0.5f;
+        }
+        else
+        {
+            // Mapeo lineal de 0.1-1.0 a 0.5-1.0
+            float normalized = (sliderValue - 0.1f) / 0.9f; // 0.0 a 1.0
+            volume = 0.5f + normalized * 0.5f;
+        }
+        
+        synthesisEngine.setPlateVolume(volume);
     }
 }
 

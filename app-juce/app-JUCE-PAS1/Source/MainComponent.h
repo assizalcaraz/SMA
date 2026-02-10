@@ -63,6 +63,9 @@ private:
     juce::Slider subOscMixSlider;
     juce::Label subOscMixLabel;
     
+    juce::Slider plateVolumeSlider;
+    juce::Label plateVolumeLabel;
+    
     juce::ToggleButton limiterToggle;
     juce::Label limiterLabel;
     

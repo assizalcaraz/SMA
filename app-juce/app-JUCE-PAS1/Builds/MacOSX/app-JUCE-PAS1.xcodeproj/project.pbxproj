@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0AA011E2E428DAB793956554 /* include_juce_core.mm */ = {isa = PBXBuildFile; fileRef = 51082990A0D16B0B578DFAD2; };
+		1272298C59A9F06C5996AA71 /* PlateSynth.cpp */ = {isa = PBXBuildFile; fileRef = 7578E5A0123331BC51FFE743; };
 		164133E24278A16436AF1E92 /* include_juce_audio_processors_headless_ara.cpp */ = {isa = PBXBuildFile; fileRef = 046CC6D68217E33B156FA364; };
 		1C9A282CC30BAEEEF252E696 /* Accelerate.framework */ = {isa = PBXBuildFile; fileRef = 39EA04CA1660769077B16D09; };
 		1F15CB9EA80DAADF53390E28 /* include_juce_gui_extra.mm */ = {isa = PBXBuildFile; fileRef = 755CD34EC4726B4F46819FB0; };
@@ -62,6 +63,7 @@
 		320901D2CC6BEDE92C171D8C /* RecentFilesMenuTemplate.nib */ /* RecentFilesMenuTemplate.nib */ = {isa = PBXFileReference; lastKnownFileType = file.nib; name = RecentFilesMenuTemplate.nib; path = RecentFilesMenuTemplate.nib; sourceTree = SOURCE_ROOT; };
 		350E964DB4DBD62BF366371B /* include_juce_audio_utils.mm */ /* include_juce_audio_utils.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_utils.mm; path = ../../JuceLibraryCode/include_juce_audio_utils.mm; sourceTree = SOURCE_ROOT; };
 		39EA04CA1660769077B16D09 /* Accelerate.framework */ /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		3DBD3FB3B1AEFD2EB7EF7A3C /* PlateSynth.h */ /* PlateSynth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PlateSynth.h; path = ../../Source/PlateSynth.h; sourceTree = SOURCE_ROOT; };
 		4698149647D916209E664DAF /* include_juce_gui_basics.mm */ /* include_juce_gui_basics.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_gui_basics.mm; path = ../../JuceLibraryCode/include_juce_gui_basics.mm; sourceTree = SOURCE_ROOT; };
 		4D265F1C37D4A8CDAAAC85CE /* ModalVoice.cpp */ /* ModalVoice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ModalVoice.cpp; path = ../../Source/ModalVoice.cpp; sourceTree = SOURCE_ROOT; };
 		5006ED990F39747E0F98A140 /* include_juce_osc.cpp */ /* include_juce_osc.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = include_juce_osc.cpp; path = ../../JuceLibraryCode/include_juce_osc.cpp; sourceTree = SOURCE_ROOT; };
@@ -74,6 +76,7 @@
 		73954E5410C95C9F17D7D71B /* juce_audio_formats */ /* juce_audio_formats */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_audio_formats; path = /Applications/JUCE/modules/juce_audio_formats; sourceTree = "<absolute>"; };
 		7491E8A3B5DF6C40A6E38B98 /* MetalKit.framework */ /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		755CD34EC4726B4F46819FB0 /* include_juce_gui_extra.mm */ /* include_juce_gui_extra.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_gui_extra.mm; path = ../../JuceLibraryCode/include_juce_gui_extra.mm; sourceTree = SOURCE_ROOT; };
+		7578E5A0123331BC51FFE743 /* PlateSynth.cpp */ /* PlateSynth.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PlateSynth.cpp; path = ../../Source/PlateSynth.cpp; sourceTree = SOURCE_ROOT; };
 		8309364185CE333F8A3E144B /* juce_gui_extra */ /* juce_gui_extra */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_gui_extra; path = /Applications/JUCE/modules/juce_gui_extra; sourceTree = "<absolute>"; };
 		844751B0AAE728CFBD0B2C20 /* DiscRecording.framework */ /* DiscRecording.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DiscRecording.framework; path = System/Library/Frameworks/DiscRecording.framework; sourceTree = SDKROOT; };
 		861A634182CD2EED7A54DE11 /* Metal.framework */ /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -232,6 +235,8 @@
 				2E28E5C9B08E29D0B9F453C6,
 				0F406F325EA574689AF608E0,
 				AF3A632C812EE72EDBE6F1D8,
+				3DBD3FB3B1AEFD2EB7EF7A3C,
+				7578E5A0123331BC51FFE743,
 				94715FA2A8F995CAEBF78EBD,
 			);
 			name = Source;
@@ -348,6 +353,7 @@
 				B2A4D93F768CD9BF468BE16F,
 				70076C70C697C41D9F17311D,
 				449810E567484C71CCAD9AC5,
+				1272298C59A9F06C5996AA71,
 				3CFD20218F3ABD6801A33FCC,
 				468A4663832FE4DE5787BFCA,
 				633A0AF0358FCA0E88ABD3BC,

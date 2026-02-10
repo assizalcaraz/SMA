@@ -78,7 +78,8 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
     plateView.clear();
     plateSynth.renderNextBlock(plateView, 0, plateView.getNumSamples());
     
-    // Sumar plate a buffer principal (pre-limiter)
+    // Sumar plate a buffer principal (pre-limiter) con control de volumen
+    float currentPlateVolume = plateVolume.load(); // RT-safe: leer atomic
     int safeSamples = juce::jmin(numSamples, plateView.getNumSamples());
     int safeChannels = juce::jmin(numChannels, plateView.getNumChannels());
     for (int channel = 0; channel < safeChannels; channel++)
@@ -87,7 +88,7 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         const float* plateData = plateView.getReadPointer(channel, 0);
         for (int sample = 0; sample < safeSamples; sample++)
         {
-            mainData[sample] += plateData[sample];
+            mainData[sample] += plateData[sample] * currentPlateVolume;
         }
     }
     
@@ -154,6 +155,11 @@ void SynthesisEngine::setLimiterEnabled(bool enabled)
     limiterEnabled.store(enabled);
 }
 
+void SynthesisEngine::setPlateVolume(float volume)
+{
+    plateVolume.store(juce::jlimit(0.0f, 1.0f, volume));
+}
+
 //==============================================================================
 int SynthesisEngine::getMaxVoices() const
 {
@@ -178,6 +184,11 @@ float SynthesisEngine::getSubOscMix() const
 bool SynthesisEngine::isLimiterEnabled() const
 {
     return limiterEnabled.load();
+}
+
+float SynthesisEngine::getPlateVolume() const
+{
+    return plateVolume.load();
 }
 
 //==============================================================================

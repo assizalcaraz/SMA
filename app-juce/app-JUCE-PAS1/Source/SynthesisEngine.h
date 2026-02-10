@@ -43,6 +43,7 @@ public:
     void setWaveform(ModalVoice::ExcitationWaveform waveform);
     void setSubOscMix(float subOscMix);
     void setLimiterEnabled(bool enabled);
+    void setPlateVolume(float volume);
 
     /** Obtiene parámetros actuales */
     int getMaxVoices() const;
@@ -50,6 +51,7 @@ public:
     ModalVoice::ExcitationWaveform getWaveform() const;
     float getSubOscMix() const;
     bool isLimiterEnabled() const;
+    float getPlateVolume() const;
 
     //==============================================================================
     /** Trigger manual de una voz (para testing sin OSC) - RT-safe: escribe a cola */
@@ -90,6 +92,7 @@ private:
     std::atomic<int> waveform{0}; // ExcitationWaveform como int (enum class no es directamente atomic)
     std::atomic<float> subOscMix{0.0f};
     std::atomic<bool> limiterEnabled{true};
+    std::atomic<float> plateVolume{1.0f}; // Volumen del módulo Plate (0.0-1.0)
     
     // Parámetros de trigger manual
     std::atomic<float> testFreq{220.0f};
