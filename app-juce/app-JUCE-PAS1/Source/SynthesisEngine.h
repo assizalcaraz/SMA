@@ -20,6 +20,8 @@ public:
         float damping;
         float brightness;
         float metalness;
+        ModalVoice::ExcitationWaveform waveform;
+        float subOscMix;
     };
 
     //==============================================================================
@@ -37,19 +39,15 @@ public:
     /** Parámetros globales (thread-safe usando atomic) */
     void setMaxVoices(int maxVoices);
     void setMetalness(float metalness);
-    void setBrightness(float brightness);
-    void setDamping(float damping);
-    void setDrive(float drive);
-    void setReverbMix(float reverbMix);
+    void setWaveform(ModalVoice::ExcitationWaveform waveform);
+    void setSubOscMix(float subOscMix);
     void setLimiterEnabled(bool enabled);
 
     /** Obtiene parámetros actuales */
     int getMaxVoices() const;
     float getMetalness() const;
-    float getBrightness() const;
-    float getDamping() const;
-    float getDrive() const;
-    float getReverbMix() const;
+    ModalVoice::ExcitationWaveform getWaveform() const;
+    float getSubOscMix() const;
     bool isLimiterEnabled() const;
 
     //==============================================================================
@@ -58,7 +56,9 @@ public:
 
     /** Trigger voz desde OSC - RT-safe: escribe a cola lock-free */
     void triggerVoiceFromOSC(float baseFreq, float amplitude, 
-                             float damping, float brightness, float metalness);
+                             float damping, float brightness, float metalness,
+                             ModalVoice::ExcitationWaveform waveform = ModalVoice::ExcitationWaveform::Noise,
+                             float subOscMix = 0.0f);
 
     /** Obtiene el número de voces activas */
     int getActiveVoiceCount() const;
@@ -82,10 +82,8 @@ private:
     // Parámetros globales (atomic para thread safety)
     std::atomic<int> maxVoices{8}; // Reducido a 8 por defecto para estabilidad RT
     std::atomic<float> metalness{0.5f};
-    std::atomic<float> brightness{0.5f};
-    std::atomic<float> damping{0.5f};
-    std::atomic<float> drive{0.0f};
-    std::atomic<float> reverbMix{0.0f};
+    std::atomic<int> waveform{0}; // ExcitationWaveform como int (enum class no es directamente atomic)
+    std::atomic<float> subOscMix{0.0f};
     std::atomic<bool> limiterEnabled{true};
     
     // Parámetros de trigger manual
@@ -100,30 +98,18 @@ private:
     float limiterThreshold = 0.95f;
     float limiterRatio = 10.0f;
     
-    // Reverb simple (delay con feedback)
-    static constexpr int REVERB_DELAY_SIZE = 48000; // ~1 segundo a 48kHz
-    float reverbDelayBuffer[REVERB_DELAY_SIZE];
-    int reverbWritePosition = 0;
-    float reverbFeedback = 0.3f; // Feedback del reverb
-    float reverbDecay = 0.7f; // Decay del reverb
-    
     // Medición de nivel de salida
     float outputLevel = 0.0f;
     float outputLevelDecay = 0.999f; // Decay para RMS
     
     // Parámetros previos para detectar cambios (RT-safe: solo lectura desde audio thread)
     float prevMetalness = 0.5f;
-    float prevBrightness = 0.5f;
-    float prevDamping = 0.5f;
     int parameterUpdateCounter = 0; // Contador para actualizar periódicamente
     static constexpr int PARAMETER_UPDATE_INTERVAL = 4; // Actualizar cada 4 bloques (~10ms a 44.1kHz/512)
     
     //==============================================================================
     /** Procesa eventos de la cola lock-free (llamado desde audio thread) */
     void processEventQueue();
-
-    /** Aplica saturación suave (tanh) */
-    float applySaturation(float sample, float driveAmount);
 
     /** Aplica limiter suave */
     float applyLimiter(float sample);

@@ -23,7 +23,9 @@ public:
 
     /** Obtiene una voz disponible y la configura, o roba una si es necesario */
     void triggerVoice(float baseFreq, float amplitude, float damping, 
-                      float brightness, float metalness);
+                      float brightness, float metalness,
+                      ModalVoice::ExcitationWaveform waveform = ModalVoice::ExcitationWaveform::Noise,
+                      float subOscMix = 0.0f);
 
     /** Renderiza todas las voces activas en el buffer */
     void renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples);

@@ -3,13 +3,6 @@
 //==============================================================================
 SynthesisEngine::SynthesisEngine()
 {
-    // Inicializar buffer de reverb
-    for (int i = 0; i < REVERB_DELAY_SIZE; i++)
-    {
-        reverbDelayBuffer[i] = 0.0f;
-    }
-    reverbWritePosition = 0;
-    
     reset();
 }
 
@@ -26,8 +19,6 @@ void SynthesisEngine::prepare(double sampleRate)
     
     // Inicializar valores previos de parámetros globales
     prevMetalness = metalness.load();
-    prevBrightness = brightness.load();
-    prevDamping = damping.load();
     parameterUpdateCounter = 0;
     
     // DIAGNOSTIC: For stability testing, use:
@@ -52,35 +43,23 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         
         // Leer parámetros globales (atomic, thread-safe)
         float currentMetalness = metalness.load();
-        float currentBrightness = brightness.load();
-        float currentDamping = damping.load();
         
-        // Actualizar solo si cambiaron (optimización)
-        if (std::abs(currentMetalness - prevMetalness) > 0.001f ||
-            std::abs(currentBrightness - prevBrightness) > 0.001f ||
-            std::abs(currentDamping - prevDamping) > 0.001f)
+        // Actualizar solo si cambió (optimización)
+        if (std::abs(currentMetalness - prevMetalness) > 0.001f)
         {
-            voiceManager.updateGlobalParameters(currentMetalness, currentBrightness, currentDamping);
+            // Usar valores fijos para brightness y damping (0.5 = medio)
+            voiceManager.updateGlobalParameters(currentMetalness, 0.5f, 0.5f);
             
-            // Actualizar valores previos
+            // Actualizar valor previo
             prevMetalness = currentMetalness;
-            prevBrightness = currentBrightness;
-            prevDamping = currentDamping;
         }
     }
     
     // Renderizar voces
     voiceManager.renderNextBlock(buffer, startSample, numSamples);
     
-    // Aplicar procesamiento master
-    float currentDrive = drive.load();
-    float currentReverbMix = reverbMix.load();
+    // Aplicar procesamiento master (solo limiter)
     bool currentLimiterEnabled = limiterEnabled.load();
-    
-    // Calcular delay time para reverb (múltiples taps para más riqueza)
-    int delayTime1 = (int)(currentSampleRate * 0.03f); // 30ms
-    int delayTime2 = (int)(currentSampleRate * 0.05f); // 50ms
-    int delayTime3 = (int)(currentSampleRate * 0.07f); // 70ms
     
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
@@ -89,37 +68,6 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         for (int sample = 0; sample < numSamples; sample++)
         {
             float sampleValue = channelData[sample];
-            float drySignal = sampleValue;
-            
-            // Aplicar saturación si drive > 0
-            if (currentDrive > 0.0f)
-            {
-                sampleValue = applySaturation(sampleValue, currentDrive);
-            }
-            
-            // Aplicar reverb si mix > 0 - hacerlo MUCHO más audible
-            float wetSignal = 0.0f;
-            if (currentReverbMix > 0.001f)
-            {
-                // Leer múltiples taps del delay con más ganancia
-                int readPos1 = (reverbWritePosition - delayTime1 + REVERB_DELAY_SIZE) % REVERB_DELAY_SIZE;
-                int readPos2 = (reverbWritePosition - delayTime2 + REVERB_DELAY_SIZE) % REVERB_DELAY_SIZE;
-                int readPos3 = (reverbWritePosition - delayTime3 + REVERB_DELAY_SIZE) % REVERB_DELAY_SIZE;
-                
-                float delayed1 = reverbDelayBuffer[readPos1] * 0.6f; // Aumentado de 0.5
-                float delayed2 = reverbDelayBuffer[readPos2] * 0.3f;
-                float delayed3 = reverbDelayBuffer[readPos3] * 0.1f; // Reducido de 0.2
-                
-                wetSignal = (delayed1 + delayed2 + delayed3) * reverbDecay * 1.5f; // Boost 50% más
-                
-                // Escribir al delay con feedback más alto
-                reverbDelayBuffer[reverbWritePosition] = sampleValue + wetSignal * reverbFeedback * 1.2f;
-                reverbWritePosition = (reverbWritePosition + 1) % REVERB_DELAY_SIZE;
-                
-                // Mezclar dry y wet con curva más agresiva
-                float reverbMixCurve = currentReverbMix * currentReverbMix; // Curva cuadrática
-                sampleValue = drySignal * (1.0f - reverbMixCurve) + wetSignal * reverbMixCurve * 1.3f; // Boost wet signal
-            }
             
             // Aplicar limiter si está habilitado
             if (currentLimiterEnabled)
@@ -158,24 +106,14 @@ void SynthesisEngine::setMetalness(float newMetalness)
     metalness.store(juce::jlimit(0.0f, 1.0f, newMetalness));
 }
 
-void SynthesisEngine::setBrightness(float newBrightness)
+void SynthesisEngine::setWaveform(ModalVoice::ExcitationWaveform newWaveform)
 {
-    brightness.store(juce::jlimit(0.0f, 1.0f, newBrightness));
+    waveform.store(static_cast<int>(newWaveform));
 }
 
-void SynthesisEngine::setDamping(float newDamping)
+void SynthesisEngine::setSubOscMix(float newSubOscMix)
 {
-    damping.store(juce::jlimit(0.0f, 1.0f, newDamping));
-}
-
-void SynthesisEngine::setDrive(float newDrive)
-{
-    drive.store(juce::jlimit(0.0f, 1.0f, newDrive));
-}
-
-void SynthesisEngine::setReverbMix(float newReverbMix)
-{
-    reverbMix.store(juce::jlimit(0.0f, 1.0f, newReverbMix));
+    subOscMix.store(juce::jlimit(0.0f, 1.0f, newSubOscMix));
 }
 
 void SynthesisEngine::setLimiterEnabled(bool enabled)
@@ -194,24 +132,14 @@ float SynthesisEngine::getMetalness() const
     return metalness.load();
 }
 
-float SynthesisEngine::getBrightness() const
+ModalVoice::ExcitationWaveform SynthesisEngine::getWaveform() const
 {
-    return brightness.load();
+    return static_cast<ModalVoice::ExcitationWaveform>(waveform.load());
 }
 
-float SynthesisEngine::getDamping() const
+float SynthesisEngine::getSubOscMix() const
 {
-    return damping.load();
-}
-
-float SynthesisEngine::getDrive() const
-{
-    return drive.load();
-}
-
-float SynthesisEngine::getReverbMix() const
-{
-    return reverbMix.load();
+    return subOscMix.load();
 }
 
 bool SynthesisEngine::isLimiterEnabled() const
@@ -227,9 +155,11 @@ void SynthesisEngine::triggerTestVoice()
     HitEvent event;
     event.baseFreq = testFreq.load();
     event.amplitude = testAmplitude.load();
-    event.damping = damping.load();
-    event.brightness = brightness.load();
+    event.damping = 0.5f; // Valor fijo
+    event.brightness = 0.5f; // Valor fijo
     event.metalness = metalness.load();
+    event.waveform = static_cast<ModalVoice::ExcitationWaveform>(waveform.load());
+    event.subOscMix = subOscMix.load();
     
     int start1, size1, start2, size2;
     eventFifo.prepareToWrite(1, start1, size1, start2, size2);
@@ -244,7 +174,9 @@ void SynthesisEngine::triggerTestVoice()
 
 //==============================================================================
 void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude, 
-                                         float damping, float brightness, float metalness)
+                                         float damping, float brightness, float metalness,
+                                         ModalVoice::ExcitationWaveform waveform,
+                                         float subOscMix)
 {
     // RT-SAFE: Escribir evento a cola lock-free (mismo path que triggerTestVoice)
     // El audio thread procesará el evento en el próximo renderNextBlock()
@@ -254,6 +186,8 @@ void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude,
     event.damping = damping;
     event.brightness = brightness;
     event.metalness = metalness;
+    event.waveform = waveform;
+    event.subOscMix = subOscMix;
     
     int start1, size1, start2, size2;
     eventFifo.prepareToWrite(1, start1, size1, start2, size2);
@@ -283,33 +217,6 @@ void SynthesisEngine::reset()
 {
     voiceManager.resetAll();
     outputLevel = 0.0f;
-    
-    // Limpiar buffer de reverb
-    for (int i = 0; i < REVERB_DELAY_SIZE; i++)
-    {
-        reverbDelayBuffer[i] = 0.0f;
-    }
-    reverbWritePosition = 0;
-}
-
-//==============================================================================
-float SynthesisEngine::applySaturation(float sample, float driveAmount)
-{
-    // Saturación mucho más agresiva y audible
-    // driveAmount 0 = sin saturación, 1 = saturación máxima
-    if (driveAmount < 0.001f)
-        return sample;
-    
-    // Ganancia de entrada mucho más alta para saturación más notoria
-    float inputGain = 1.0f + driveAmount * 8.0f; // 1.0 a 9.0 (muy agresivo)
-    float saturated = std::tanh(sample * inputGain);
-    
-    // Ganancia de salida para compensar pérdida de nivel
-    float outputGain = 1.0f + driveAmount * 1.5f; // 1.0 a 2.5
-    
-    // Mezcla entre señal original y saturada
-    float mix = driveAmount * 0.8f; // Mezcla hasta 80% saturado
-    return (sample * (1.0f - mix) + saturated * mix) * outputGain;
 }
 
 //==============================================================================
@@ -354,7 +261,8 @@ void SynthesisEngine::processEventQueue()
     {
         const HitEvent& event = eventQueue[start1 + i];
         voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
-                                   event.damping, event.brightness, event.metalness);
+                                   event.damping, event.brightness, event.metalness,
+                                   event.waveform, event.subOscMix);
     }
     
     // Procesar segunda sección (si hay wraparound)
@@ -362,7 +270,8 @@ void SynthesisEngine::processEventQueue()
     {
         const HitEvent& event = eventQueue[start2 + i];
         voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
-                                   event.damping, event.brightness, event.metalness);
+                                   event.damping, event.brightness, event.metalness,
+                                   event.waveform, event.subOscMix);
     }
     
     eventFifo.finishedRead(size1 + size2);

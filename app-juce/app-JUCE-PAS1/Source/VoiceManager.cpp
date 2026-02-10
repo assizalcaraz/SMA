@@ -59,7 +59,9 @@ void VoiceManager::setMaxVoices(int newMaxVoices)
 
 //==============================================================================
 void VoiceManager::triggerVoice(float baseFreq, float amplitude, float damping, 
-                                 float brightness, float metalness)
+                                 float brightness, float metalness,
+                                 ModalVoice::ExcitationWaveform waveform,
+                                 float subOscMix)
 {
     // RT-SAFE: Verificar que hay voces disponibles
     if (maxVoices == 0 || voices.size() == 0)
@@ -90,7 +92,7 @@ void VoiceManager::triggerVoice(float baseFreq, float amplitude, float damping,
         }
         
         // Configurar y trigger la voz
-        voiceToUse->setParameters(baseFreq, amplitude, damping, brightness, metalness);
+        voiceToUse->setParameters(baseFreq, amplitude, damping, brightness, metalness, waveform, subOscMix);
         voiceToUse->trigger();
         
         // Actualizar tiempo de trigger
@@ -269,12 +271,15 @@ void VoiceManager::updateGlobalParameters(float metalness, float brightness, flo
         if (voice->isActive())
         {
             // Obtener parámetros actuales de la voz y actualizar solo los globales
+            // Mantener waveform y subOscMix actuales (no se actualizan en updateGlobalParameters)
             voice->setParameters(
                 voice->getCurrentBaseFreq(),
                 voice->getCurrentAmplitude(),
                 damping,
                 brightness,
-                metalness
+                metalness,
+                ModalVoice::ExcitationWaveform::Noise, // Default, se mantiene el waveform de cada voz
+                0.0f // Default subOscMix, se mantiene el valor actual
             );
         }
     }

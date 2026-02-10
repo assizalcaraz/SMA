@@ -27,7 +27,9 @@ void ModalVoice::prepare(double sampleRate)
 
 //==============================================================================
 void ModalVoice::setParameters(float baseFreq, float amplitude, float damping, 
-                                float brightness, float metalness)
+                                float brightness, float metalness,
+                                ExcitationWaveform waveform,
+                                float subOscMix)
 {
     bool needsUpdate = false;
     
@@ -44,6 +46,8 @@ void ModalVoice::setParameters(float baseFreq, float amplitude, float damping,
     currentDamping = juce::jlimit(0.0f, 1.0f, damping);
     currentBrightness = juce::jlimit(0.0f, 1.0f, brightness);
     currentMetalness = juce::jlimit(0.0f, 1.0f, metalness);
+    currentWaveform = waveform;
+    currentSubOscMix = juce::jlimit(0.0f, 1.0f, subOscMix);
     
     // Actualizar coeficientes si cambió frecuencia, brightness o metalness
     if (needsUpdate || std::abs(prevBrightness - currentBrightness) > 0.01f || 
@@ -73,6 +77,10 @@ void ModalVoice::trigger()
     
     // Actualizar coeficientes con las nuevas variaciones
     updateFilterCoefficients();
+    
+    // Actualizar frecuencia del sub-oscillator (una octava abajo)
+    subOsc.setFrequency(currentBaseFreq * 0.5f, currentSampleRate);
+    subOsc.reset();
     
     generateExcitation();
     isExciting = true;
@@ -104,9 +112,10 @@ float ModalVoice::renderNextSample()
         }
     }
     
-    // RT-SAFE: Procesar modos (optimizado para 4 modos)
+    // RT-SAFE: Procesar modos (optimizado para 6 modos)
     float output = modes[0].process(excitation) + modes[1].process(excitation) + 
-                   modes[2].process(excitation) + modes[3].process(excitation);
+                   modes[2].process(excitation) + modes[3].process(excitation) +
+                   modes[4].process(excitation) + modes[5].process(excitation);
     
     // Aplicar filtro formant opcional para más carácter tímbrico
     if (formantEnabled)
@@ -117,6 +126,14 @@ float ModalVoice::renderNextSample()
     // Aplicar envolvente de decaimiento global (optimizado: combinar multiplicaciones)
     float envAmp = envelope * currentAmplitude;
     output *= envAmp;
+    
+    // Agregar sub-oscillator si está activo
+    if (currentSubOscMix > 0.0f)
+    {
+        float subOscOutput = renderSubOscillator();
+        output += subOscOutput * currentSubOscMix * envAmp;
+    }
+    
     envelope *= envelopeDecay;
     
     // Actualizar amplitud residual (para voice stealing) - solo si es significativo
@@ -157,6 +174,8 @@ void ModalVoice::reset()
     
     formantFilter.reset();
     
+    subOsc.reset();
+    
     excitationPosition = 0;
     excitationLength = 0;
     isExciting = false;
@@ -186,12 +205,42 @@ void ModalVoice::updateFilterCoefficients()
 //==============================================================================
 void ModalVoice::generateExcitation()
 {
-    // Generar excitación con más contenido de alta frecuencia para timbre metálico
-    // Duración variable: 3-8ms (más corta = más aguda, más metálica)
+    // Duración variable: 4-8ms (más corta = más aguda, más metálica)
     float durationMs = 4.0f + random.nextFloat() * 4.0f; // 4-8ms variable
     excitationLength = (int)(durationMs * 0.001f * currentSampleRate);
     excitationLength = juce::jlimit(1, 128, excitationLength);
     
+    // Seleccionar método de generación según forma de onda
+    switch (currentWaveform)
+    {
+        case ExcitationWaveform::Noise:
+            generateNoiseExcitation();
+            break;
+        case ExcitationWaveform::Sine:
+            generateSineExcitation();
+            break;
+        case ExcitationWaveform::Square:
+            generateSquareExcitation();
+            break;
+        case ExcitationWaveform::Saw:
+            generateSawExcitation();
+            break;
+        case ExcitationWaveform::Triangle:
+            generateTriangleExcitation();
+            break;
+        case ExcitationWaveform::Click:
+            generateClickExcitation();
+            break;
+        case ExcitationWaveform::Pulse:
+            generatePulseExcitation();
+            break;
+    }
+}
+
+//==============================================================================
+void ModalVoice::generateNoiseExcitation()
+{
+    // Generar excitación con más contenido de alta frecuencia para timbre metálico
     // Generar ruido blanco con énfasis en altas frecuencias
     // Usar diferenciación para crear click más agudo (impulso diferenciado)
     const float scale = 2.0f;
@@ -214,6 +263,140 @@ void ModalVoice::generateExcitation()
         
         excitationBuffer[i] = diff * env * 1.5f; // Amplificar ligeramente para compensar diferenciación
     }
+}
+
+//==============================================================================
+void ModalVoice::generateSineExcitation()
+{
+    // Sinusoidal suave: ciclo completo de seno con envolvente
+    const float twoPi = 2.0f * juce::MathConstants<float>::pi;
+    const float cycles = 1.0f; // Un ciclo completo
+    
+    for (int i = 0; i < excitationLength; i++)
+    {
+        float phase = (float)i / (float)excitationLength * cycles * twoPi;
+        float sine = std::sin(phase);
+        
+        // Envolvente exponencial para suavizar
+        float env = 1.0f - ((float)i / (float)excitationLength);
+        env = env * env;
+        
+        excitationBuffer[i] = sine * env * 0.8f;
+    }
+}
+
+//==============================================================================
+void ModalVoice::generateSquareExcitation()
+{
+    // Cuadrada agresiva: onda cuadrada con envolvente
+    const float cycles = 2.0f; // Varios ciclos para más agresividad
+    
+    for (int i = 0; i < excitationLength; i++)
+    {
+        float phase = (float)i / (float)excitationLength * cycles;
+        float square = (std::fmod(phase, 1.0f) < 0.5f) ? 1.0f : -1.0f;
+        
+        // Envolvente exponencial
+        float env = 1.0f - ((float)i / (float)excitationLength);
+        env = env * env;
+        
+        excitationBuffer[i] = square * env * 0.7f;
+    }
+}
+
+//==============================================================================
+void ModalVoice::generateSawExcitation()
+{
+    // Diente de sierra brillante: rampa descendente con envolvente
+    const float cycles = 2.0f;
+    
+    for (int i = 0; i < excitationLength; i++)
+    {
+        float phase = std::fmod((float)i / (float)excitationLength * cycles, 1.0f);
+        float saw = 1.0f - (phase * 2.0f); // De 1 a -1
+        
+        // Envolvente exponencial
+        float env = 1.0f - ((float)i / (float)excitationLength);
+        env = env * env;
+        
+        excitationBuffer[i] = saw * env * 0.6f;
+    }
+}
+
+//==============================================================================
+void ModalVoice::generateTriangleExcitation()
+{
+    // Triangular suave: onda triangular con envolvente
+    const float cycles = 2.0f;
+    
+    for (int i = 0; i < excitationLength; i++)
+    {
+        float phase = std::fmod((float)i / (float)excitationLength * cycles, 1.0f);
+        float triangle;
+        if (phase < 0.5f)
+            triangle = 1.0f - (phase * 4.0f); // De 1 a -1 en primera mitad
+        else
+            triangle = -1.0f + ((phase - 0.5f) * 4.0f); // De -1 a 1 en segunda mitad
+        
+        // Envolvente exponencial
+        float env = 1.0f - ((float)i / (float)excitationLength);
+        env = env * env;
+        
+        excitationBuffer[i] = triangle * env * 0.7f;
+    }
+}
+
+//==============================================================================
+void ModalVoice::generateClickExcitation()
+{
+    // Impulso delta percusivo: impulso muy corto y agudo
+    // Solo los primeros samples tienen señal, el resto es cero
+    int clickLength = juce::jmin(4, excitationLength); // Muy corto: 4 samples máximo
+    
+    for (int i = 0; i < excitationLength; i++)
+    {
+        if (i < clickLength)
+        {
+            // Impulso con envolvente muy rápida
+            float env = 1.0f - ((float)i / (float)clickLength);
+            excitationBuffer[i] = env * 2.0f; // Alto para ser percusivo
+        }
+        else
+        {
+            excitationBuffer[i] = 0.0f;
+        }
+    }
+}
+
+//==============================================================================
+void ModalVoice::generatePulseExcitation()
+{
+    // Pulso estrecho muy agudo: pulso muy corto tipo "tick"
+    int pulseWidth = juce::jmin(2, excitationLength / 4); // Muy estrecho
+    
+    for (int i = 0; i < excitationLength; i++)
+    {
+        if (i < pulseWidth)
+        {
+            // Pulso positivo corto
+            excitationBuffer[i] = 1.5f;
+        }
+        else if (i < pulseWidth * 2)
+        {
+            // Pulso negativo corto (para balance)
+            excitationBuffer[i] = -1.5f;
+        }
+        else
+        {
+            excitationBuffer[i] = 0.0f;
+        }
+    }
+}
+
+//==============================================================================
+float ModalVoice::renderSubOscillator()
+{
+    return subOsc.renderNextSample();
 }
 
 //==============================================================================
@@ -269,7 +452,7 @@ float ModalVoice::calculateModeQ(int modeIndex) const
     // Q más alto = resonancia más estrecha y decay más largo = más "ringing" metálico
     // Modos más altos típicamente tienen Q más alto (más "ringing")
     // Base Q aumentado para timbre metálico: 25-60 (en lugar de 10-25)
-    float baseQ = 25.0f + (float)modeIndex * 11.67f; // Q de 25 a 60 para 4 modos
+    float baseQ = 25.0f + (float)modeIndex * 7.0f; // Q de 25 a 60 para 6 modos
     
     // Damping afecta el Q: más damping = Q más bajo = decay más rápido
     // Pero también afectamos el decay directamente, así que Q puede ser más constante

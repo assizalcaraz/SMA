@@ -18,7 +18,7 @@ void ofApp::setup(){
     
     // Parámetros de colisiones
     restitution = 0.6f;      // Coeficiente de restitución (0.2-0.85)
-    hit_cooldown_ms = 60.0f; // Cooldown por partícula en ms (30-120)
+    hit_cooldown_ms = 40.0f; // Cooldown por partícula en ms (20-120) - reducido para más densidad
     particle_radius = 5.0f;  // Radio de colisión entre partículas (píxeles)
     enable_particle_collisions = true;  // Habilitar colisiones partícula-partícula por defecto
     
@@ -30,9 +30,9 @@ void ofApp::setup(){
     energy_b = 0.3f;         // Peso de distancia en energía (0.1-0.5)
     
     // Parámetros de rate limiting
-    max_hits_per_second = 200.0f;  // Máximo de hits por segundo (50-500)
-    burst = 300.0f;                // Burst máximo (100-500)
-    max_hits_per_frame = 10;        // Máximo de hits por frame (5-20)
+    max_hits_per_second = 400.0f;  // Máximo de hits por segundo (50-1000) - aumentado para sonido más denso
+    burst = 500.0f;                // Burst máximo (100-1000) - aumentado para permitir más eventos simultáneos
+    max_hits_per_frame = 30;        // Máximo de hits por frame (5-50) - aumentado para sonido más denso
     
     // Inicializar rate limiter
     rate_limiter.tokens = burst;
@@ -66,7 +66,7 @@ void ofApp::setup(){
     
     // Sliders de colisiones
     gui.add(restitutionSlider.setup("restitution", restitution, 0.2f, 0.85f));
-    gui.add(hitCooldownSlider.setup("hit_cooldown (ms)", hit_cooldown_ms, 30.0f, 120.0f));
+    gui.add(hitCooldownSlider.setup("hit_cooldown (ms)", hit_cooldown_ms, 20.0f, 120.0f));
     gui.add(particleRadiusSlider.setup("particle_radius", particle_radius, 2.0f, 20.0f));
     gui.add(enableParticleCollisionsToggle.setup("enable_particle_collisions", enable_particle_collisions));
     
@@ -77,9 +77,9 @@ void ofApp::setup(){
     gui.add(energyBSlider.setup("energy_b", energy_b, 0.1f, 0.5f));
     
     // Sliders de rate limiting
-    gui.add(maxHitsPerSecondSlider.setup("max_hits/s", max_hits_per_second, 50.0f, 500.0f));
-    gui.add(burstSlider.setup("burst", burst, 100.0f, 500.0f));
-    gui.add(maxHitsPerFrameSlider.setup("max_hits/frame", max_hits_per_frame, 5, 20));
+    gui.add(maxHitsPerSecondSlider.setup("max_hits/s", max_hits_per_second, 50.0f, 1000.0f));
+    gui.add(burstSlider.setup("burst", burst, 100.0f, 1000.0f));
+    gui.add(maxHitsPerFrameSlider.setup("max_hits/frame", max_hits_per_frame, 5, 50));
     
     // Inicializar partículas
     initializeParticles(initialN);

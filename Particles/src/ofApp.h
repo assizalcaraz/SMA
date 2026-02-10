@@ -68,7 +68,7 @@ class ofApp : public ofBaseApp{
 		
 		// Parámetros de colisiones
 		float restitution;       // Coeficiente de restitución (0.2-0.85)
-		float hit_cooldown_ms;   // Cooldown por partícula en ms (30-120)
+		float hit_cooldown_ms;   // Cooldown por partícula en ms (20-120)
 		float particle_radius;   // Radio de colisión entre partículas (píxeles)
 		bool enable_particle_collisions;  // Habilitar/deshabilitar colisiones partícula-partícula
 		
@@ -79,9 +79,9 @@ class ofApp : public ofBaseApp{
 		float energy_b;          // Peso de distancia en energía (0.1-0.5)
 		
 		// Parámetros de rate limiting
-		float max_hits_per_second;  // Máximo de hits por segundo (50-500)
-		float burst;                // Burst máximo (100-500)
-		int max_hits_per_frame;     // Máximo de hits por frame (5-20)
+		float max_hits_per_second;  // Máximo de hits por segundo (50-1000)
+		float burst;                // Burst máximo (100-1000)
+		int max_hits_per_frame;     // Máximo de hits por frame (5-50)
 		
 		// Rate limiter
 		RateLimiter rate_limiter;

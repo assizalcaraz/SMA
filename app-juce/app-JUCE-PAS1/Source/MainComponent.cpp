@@ -3,13 +3,27 @@
 //==============================================================================
 MainComponent::MainComponent()
 {
-    // Configurar sliders y labels
+    // Configurar sliders y labels (solo controles que funcionan)
     setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
     setupSlider(metalnessSlider, metalnessLabel, "Pitch", 0.0, 1.0, 0.5);
-    setupSlider(brightnessSlider, brightnessLabel, "Brightness", 0.0, 1.0, 0.5);
-    setupSlider(dampingSlider, dampingLabel, "Damping", 0.0, 1.0, 0.5);
-    setupSlider(driveSlider, driveLabel, "Drive", 0.0, 1.0, 0.0);
-    setupSlider(reverbMixSlider, reverbMixLabel, "Reverb Mix", 0.0, 1.0, 0.0);
+    setupSlider(subOscMixSlider, subOscMixLabel, "SubOsc Mix", 0.0, 1.0, 0.0);
+    
+    // Waveform selector
+    waveformComboBox.addItem("Noise", 1);
+    waveformComboBox.addItem("Sine", 2);
+    waveformComboBox.addItem("Square", 3);
+    waveformComboBox.addItem("Saw", 4);
+    waveformComboBox.addItem("Triangle", 5);
+    waveformComboBox.addItem("Click", 6);
+    waveformComboBox.addItem("Pulse", 7);
+    waveformComboBox.setSelectedId(1, juce::dontSendNotification); // Default: Noise
+    waveformComboBox.addListener(this);
+    addAndMakeVisible(&waveformComboBox);
+    
+    waveformLabel.setText("Waveform", juce::dontSendNotification);
+    waveformLabel.attachToComponent(&waveformComboBox, false);
+    waveformLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(&waveformLabel);
     
     // Limiter toggle
     limiterToggle.setButtonText("Limiter");
@@ -168,24 +182,18 @@ void MainComponent::resized()
     metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
     metalnessSlider.setBounds(metalnessArea);
     
-    auto brightnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    brightnessLabel.setBounds(brightnessArea.removeFromLeft(labelWidth));
-    brightnessSlider.setBounds(brightnessArea);
+    // Waveform combo box
+    auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
+    waveformComboBox.setBounds(waveformArea);
     
-    auto dampingArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
-    dampingSlider.setBounds(dampingArea);
+    // SubOsc Mix slider
+    auto subOscArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
+    subOscMixSlider.setBounds(subOscArea);
     
-    // Segunda columna de sliders
-    auto rightColumn = area.removeFromLeft(350);
-    
-    auto driveArea = rightColumn.removeFromTop(sliderHeight).reduced(margin);
-    driveLabel.setBounds(driveArea.removeFromLeft(labelWidth));
-    driveSlider.setBounds(driveArea);
-    
-    auto reverbArea = rightColumn.removeFromTop(sliderHeight).reduced(margin);
-    reverbMixLabel.setBounds(reverbArea.removeFromLeft(labelWidth));
-    reverbMixSlider.setBounds(reverbArea);
+    // Segunda columna de controles
+    auto rightColumn = area.removeFromRight(350);
     
     // Limiter toggle
     limiterToggle.setBounds(rightColumn.removeFromTop(30).reduced(margin));
@@ -212,21 +220,9 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     {
         synthesisEngine.setMetalness((float)metalnessSlider.getValue());
     }
-    else if (slider == &brightnessSlider)
+    else if (slider == &subOscMixSlider)
     {
-        synthesisEngine.setBrightness((float)brightnessSlider.getValue());
-    }
-    else if (slider == &dampingSlider)
-    {
-        synthesisEngine.setDamping((float)dampingSlider.getValue());
-    }
-    else if (slider == &driveSlider)
-    {
-        synthesisEngine.setDrive((float)driveSlider.getValue());
-    }
-    else if (slider == &reverbMixSlider)
-    {
-        synthesisEngine.setReverbMix((float)reverbMixSlider.getValue());
+        synthesisEngine.setSubOscMix((float)subOscMixSlider.getValue());
     }
 }
 
@@ -240,6 +236,17 @@ void MainComponent::buttonClicked (juce::Button* button)
     else if (button == &limiterToggle)
     {
         synthesisEngine.setLimiterEnabled(limiterToggle.getToggleState());
+    }
+}
+
+//==============================================================================
+void MainComponent::comboBoxChanged (juce::ComboBox* comboBox)
+{
+    if (comboBox == &waveformComboBox)
+    {
+        int selectedId = waveformComboBox.getSelectedId();
+        ModalVoice::ExcitationWaveform waveform = static_cast<ModalVoice::ExcitationWaveform>(selectedId - 1);
+        synthesisEngine.setWaveform(waveform);
     }
 }
 
@@ -379,8 +386,23 @@ void MainComponent::mapOSCHitToEvent(const juce::OSCMessage& message)
         metalness = juce::jlimit(0.0f, 1.0f, metalness + surfaceMod);
     }
     
+    // Mapeo adaptativo de energy → waveform (Fase 4: Excitación Adaptativa)
+    // Alta energía → formas agresivas, baja energía → formas suaves
+    ModalVoice::ExcitationWaveform waveform;
+    if (energy > 0.7f)
+        waveform = ModalVoice::ExcitationWaveform::Square; // Alta energía → agresivo
+    else if (energy > 0.4f)
+        waveform = ModalVoice::ExcitationWaveform::Saw; // Media-alta → brillante
+    else if (energy > 0.2f)
+        waveform = ModalVoice::ExcitationWaveform::Noise; // Media-baja → ruido
+    else
+        waveform = ModalVoice::ExcitationWaveform::Sine; // Baja energía → suave
+    
+    // Obtener subOscMix global del engine
+    float subOscMix = synthesisEngine.getSubOscMix();
+    
     // Trigger voice through RT-safe queue
-    synthesisEngine.triggerVoiceFromOSC(baseFreq, amplitude, damping, brightness, metalness);
+    synthesisEngine.triggerVoiceFromOSC(baseFreq, amplitude, damping, brightness, metalness, waveform, subOscMix);
     
     (void)id; // Suppress unused variable warning (id is for future use)
 }
@@ -408,18 +430,8 @@ void MainComponent::updateOSCState(const juce::OSCMessage& message)
     float presence = juce::jlimit(0.0f, 1.0f, message[2].getFloat32());
     
     // Map global parameters (non-RT thread safe, but atomic)
-    // activity → reverbMix: reverbMix = activity * 0.5
-    globalReverbMix.store(activity * 0.5f);
-    
-    // gesture → drive: drive = gesture
-    globalDrive.store(gesture);
-    
     // presence → master level (optional: gently reduce if presence < 0.5)
     globalPresence.store(presence);
-    
-    // Apply global parameters to synthesis engine
-    synthesisEngine.setReverbMix(globalReverbMix.load());
-    synthesisEngine.setDrive(globalDrive.load());
     
     // Optional: Apply presence to master level (could be implemented in SynthesisEngine)
     // For now, we store it but don't apply it

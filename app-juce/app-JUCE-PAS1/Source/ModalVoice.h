@@ -13,6 +13,19 @@ class ModalVoice
 {
 public:
     //==============================================================================
+    /** Formas de onda disponibles para la excitación */
+    enum class ExcitationWaveform
+    {
+        Noise,      // Ruido diferenciado (actual)
+        Sine,       // Sinusoidal suave
+        Square,     // Cuadrada agresiva
+        Saw,        // Diente de sierra brillante
+        Triangle,   // Triangular suave
+        Click,      // Impulso delta percusivo
+        Pulse       // Pulso estrecho muy agudo
+    };
+
+    //==============================================================================
     ModalVoice();
     ~ModalVoice() = default;
 
@@ -22,7 +35,9 @@ public:
 
     /** Configura los parámetros de la voz */
     void setParameters(float baseFreq, float amplitude, float damping, 
-                       float brightness, float metalness);
+                       float brightness, float metalness,
+                       ExcitationWaveform waveform = ExcitationWaveform::Noise,
+                       float subOscMix = 0.0f);
 
     /** Trigger la voz (inicia la excitación) */
     void trigger();
@@ -47,22 +62,26 @@ public:
 
 private:
     //==============================================================================
-    static constexpr int NUM_MODES = 4; // Número de modos resonantes (aumentado para timbre metálico más rico)
+    static constexpr int NUM_MODES = 6; // Número de modos resonantes (aumentado para timbre metálico más rico)
     
     // Factores inarmónicos para cada modo (valores típicos para timbre metálico)
     static constexpr float INHARMONIC_FACTORS[NUM_MODES] = {
-        1.0f,      // Modo fundamental
-        2.76f,     // Segundo modo inarmónico
-        5.40f,     // Tercer modo inarmónico
-        8.93f      // Cuarto modo inarmónico
+        1.0f,      // Modo 0: fundamental
+        2.76f,     // Modo 1: segundo modo inarmónico
+        5.40f,     // Modo 2: tercer modo inarmónico
+        8.93f,     // Modo 3: cuarto modo inarmónico
+        13.34f,    // Modo 4: quinto modo inarmónico
+        18.65f     // Modo 5: sexto modo inarmónico
     };
 
     // Ganancias relativas por modo (para brightness)
     static constexpr float MODE_GAINS[NUM_MODES] = {
-        1.0f,      // Fundamental más fuerte
-        0.8f,      // Segundo modo
-        0.9f,      // Tercer modo (medio-alto, más brillante)
-        0.7f       // Cuarto modo (alto)
+        1.0f,      // Modo 0: fundamental más fuerte
+        0.8f,      // Modo 1: segundo modo
+        0.9f,      // Modo 2: tercer modo (medio-alto, más brillante)
+        0.7f,      // Modo 3: cuarto modo (alto)
+        0.6f,      // Modo 4: quinto modo
+        0.5f       // Modo 5: sexto modo
     };
 
     //==============================================================================
@@ -110,6 +129,57 @@ private:
             x1 = input;
             y2 = y1;
             y1 = output;
+            return output;
+        }
+    };
+
+    //==============================================================================
+    struct SubOscillator
+    {
+        float phase = 0.0f;
+        float phaseIncrement = 0.0f;
+        ExcitationWaveform waveform = ExcitationWaveform::Square; // Por defecto square
+        
+        void setFrequency(float freq, double sampleRate)
+        {
+            phaseIncrement = 2.0f * juce::MathConstants<float>::pi * freq / (float)sampleRate;
+        }
+        
+        void reset()
+        {
+            phase = 0.0f;
+        }
+        
+        float renderNextSample()
+        {
+            float output = 0.0f;
+            
+            switch (waveform)
+            {
+                case ExcitationWaveform::Square:
+                    output = (phase < juce::MathConstants<float>::pi) ? 1.0f : -1.0f;
+                    break;
+                case ExcitationWaveform::Sine:
+                    output = std::sin(phase);
+                    break;
+                case ExcitationWaveform::Saw:
+                    output = (phase / juce::MathConstants<float>::pi) - 1.0f;
+                    break;
+                case ExcitationWaveform::Triangle:
+                    if (phase < juce::MathConstants<float>::pi)
+                        output = (phase / juce::MathConstants<float>::pi) * 2.0f - 1.0f;
+                    else
+                        output = 1.0f - ((phase - juce::MathConstants<float>::pi) / juce::MathConstants<float>::pi) * 2.0f;
+                    break;
+                default:
+                    output = (phase < juce::MathConstants<float>::pi) ? 1.0f : -1.0f; // Default to square
+                    break;
+            }
+            
+            phase += phaseIncrement;
+            if (phase >= 2.0f * juce::MathConstants<float>::pi)
+                phase -= 2.0f * juce::MathConstants<float>::pi;
+            
             return output;
         }
     };
@@ -189,6 +259,7 @@ private:
     int excitationLength = 0;
     int excitationPosition = 0;
     bool isExciting = false;
+    ExcitationWaveform currentWaveform = ExcitationWaveform::Noise;
     
     // Envolvente de decaimiento global
     float envelope = 0.0f;
@@ -197,9 +268,21 @@ private:
     // Amplitud residual para voice stealing
     float residualAmplitude = 0.0f;
     
+    // Sub-oscillator
+    SubOscillator subOsc;
+    float currentSubOscMix = 0.0f;
+    
     //==============================================================================
     void updateFilterCoefficients();
     void generateExcitation();
+    void generateNoiseExcitation();
+    void generateSineExcitation();
+    void generateSquareExcitation();
+    void generateSawExcitation();
+    void generateTriangleExcitation();
+    void generateClickExcitation();
+    void generatePulseExcitation();
+    float renderSubOscillator();
     float calculateModeFrequency(int modeIndex) const;
     float calculateModeGain(int modeIndex) const;
     float calculateModeQ(int modeIndex) const;

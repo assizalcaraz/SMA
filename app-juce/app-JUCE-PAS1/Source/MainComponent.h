@@ -22,6 +22,7 @@
 class MainComponent  : public juce::AudioAppComponent,
                        public juce::Slider::Listener,
                        public juce::Button::Listener,
+                       public juce::ComboBox::Listener,
                        public juce::Timer,
                        private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback>
 {
@@ -42,6 +43,7 @@ public:
     //==============================================================================
     void sliderValueChanged (juce::Slider* slider) override;
     void buttonClicked (juce::Button* button) override;
+    void comboBoxChanged (juce::ComboBox* comboBox) override;
     void timerCallback() override;
 
 private:
@@ -55,17 +57,11 @@ private:
     juce::Slider metalnessSlider;
     juce::Label metalnessLabel;
     
-    juce::Slider brightnessSlider;
-    juce::Label brightnessLabel;
+    juce::ComboBox waveformComboBox;
+    juce::Label waveformLabel;
     
-    juce::Slider dampingSlider;
-    juce::Label dampingLabel;
-    
-    juce::Slider driveSlider;
-    juce::Label driveLabel;
-    
-    juce::Slider reverbMixSlider;
-    juce::Label reverbMixLabel;
+    juce::Slider subOscMixSlider;
+    juce::Label subOscMixLabel;
     
     juce::ToggleButton limiterToggle;
     juce::Label limiterLabel;
@@ -86,8 +82,6 @@ private:
     juce::int64 lastOscCountUpdateTime = 0;
     
     // Global state from /state messages (non-RT thread safe)
-    std::atomic<float> globalReverbMix{0.0f};
-    std::atomic<float> globalDrive{0.0f};
     std::atomic<float> globalPresence{1.0f};
     
     //==============================================================================
