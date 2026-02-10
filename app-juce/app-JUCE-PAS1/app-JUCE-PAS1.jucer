@@ -14,6 +14,8 @@
       <FILE id="voiceManagerCpp" name="VoiceManager.cpp" compile="1" resource="0" file="Source/VoiceManager.cpp"/>
       <FILE id="synthesisEngineH" name="SynthesisEngine.h" compile="0" resource="0" file="Source/SynthesisEngine.h"/>
       <FILE id="synthesisEngineCpp" name="SynthesisEngine.cpp" compile="1" resource="0" file="Source/SynthesisEngine.cpp"/>
+      <FILE id="plateSynthH" name="PlateSynth.h" compile="0" resource="0" file="Source/PlateSynth.h"/>
+      <FILE id="plateSynthCpp" name="PlateSynth.cpp" compile="1" resource="0" file="Source/PlateSynth.cpp"/>
       <FILE id="synthParametersH" name="SynthParameters.h" compile="0" resource="0" file="Source/SynthParameters.h"/>
     </GROUP>
   </MAINGROUP>
