@@ -145,12 +145,14 @@ class ofApp : public ofBaseApp{
 		int plateMode;
 		float plateSendTimer;
 		float plateSendInterval;  // 0.05s = 20 Hz
+		float plateForceStrength;  // Intensidad de fuerza del plate (ajustable)
 		
 		// Funciones auxiliares
 		void initializeParticles(int n);
 		void resizeParticles(int newN);
 		void updateMouseInput();
 		void applyGestureForce();
+		void applyPlateForce();
 		void drawDebugOverlay();
 		
 		// Funciones de colisiones y eventos

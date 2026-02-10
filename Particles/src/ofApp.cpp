@@ -101,6 +101,7 @@ void ofApp::setup(){
     plateMode = 0;      // Modo inicial
     plateSendInterval = 0.05f;  // 20 Hz
     plateSendTimer = 0.0f;
+    plateForceStrength = 50.0f;  // Intensidad de fuerza del plate (ajustable)
     gui.add(plateFreqSlider.setup("plate_freq (Hz)", plateFreq, 20.0f, 2000.0f));
     gui.add(plateAmpSlider.setup("plate_amp", plateAmp, 0.0f, 1.0f));
     gui.add(plateModeSlider.setup("plate_mode", plateMode, 0, 7));
@@ -164,6 +165,9 @@ void ofApp::update(){
     
     // Aplicar fuerza de gesto a las partículas
     applyGestureForce();
+    
+    // Aplicar fuerza del Plate Controller a las partículas
+    applyPlateForce();
     
     // Actualizar física de partículas
     float dt = ofGetLastFrameTime();
@@ -412,6 +416,70 @@ void ofApp::applyGestureForce() {
         
         // Aplicar fuerza directamente a la velocidad (impulso)
         p.vel += (F_gesture / p.mass) * dt;
+    }
+}
+
+//--------------------------------------------------------------
+void ofApp::applyPlateForce() {
+    // Solo aplicar fuerza si la amplitud del plate es significativa
+    if (plateAmp < 0.01f) {
+        return; // Plate silencioso, no aplicar fuerza
+    }
+    
+    float winWidth = ofGetWidth();
+    float winHeight = ofGetHeight();
+    float centerX = winWidth * 0.5f;
+    float centerY = winHeight * 0.5f;
+    
+    // Mapear frecuencia a posición vertical del centro de fuerza
+    // Frecuencia baja (20 Hz) → parte inferior, alta (2000 Hz) → parte superior
+    float freqNorm = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
+    float plateCenterY = centerY + (freqNorm - 0.5f) * winHeight * 0.6f; // Rango ±30% de altura
+    
+    // Mapear modo a posición horizontal (0-7 → izquierda a derecha)
+    float modeNorm = plateMode / 7.0f; // 0.0 a 1.0
+    float plateCenterX = centerX + (modeNorm - 0.5f) * winWidth * 0.6f; // Rango ±30% de ancho
+    
+    ofVec2f plateCenter = ofVec2f(plateCenterX, plateCenterY);
+    
+    // Radio de influencia basado en amplitud (más amplitud = más alcance)
+    float influenceRadius = sigma * (0.5f + plateAmp * 1.5f); // 0.5x a 2.0x de sigma
+    
+    // Intensidad de fuerza proporcional a amplitud
+    float forceIntensity = plateForceStrength * plateAmp;
+    
+    // Aplicar fuerza a cada partícula
+    float dt = ofGetLastFrameTime();
+    if (dt <= 0.0f) dt = 0.016f;
+    
+    for (auto& p : particles) {
+        // Distancia desde partícula al centro del plate
+        ofVec2f particlePosPixels = ofVec2f(p.pos.x, p.pos.y);
+        ofVec2f diff = particlePosPixels - plateCenter;
+        float r = diff.length();
+        
+        // Calcular dirección radial desde plate hacia partícula
+        ofVec2f push_dir;
+        if (r > 0.001f) {
+            push_dir = diff.getNormalized(); // Dirección desde plate hacia partícula
+        } else {
+            continue; // Partícula exactamente en el centro, saltar
+        }
+        
+        // Influencia gaussiana por distancia
+        float w = exp(-(r * r) / (2.0f * influenceRadius * influenceRadius));
+        
+        // Solo aplicar fuerza si la influencia es significativa
+        if (w < 0.01f) {
+            continue; // Influencia demasiado pequeña, saltar
+        }
+        
+        // Fuerza del plate: push radial que empuja partículas alejándolas del centro
+        // La fuerza es proporcional a la amplitud y la cercanía (gaussiana)
+        ofVec2f F_plate = forceIntensity * w * push_dir;
+        
+        // Aplicar fuerza directamente a la velocidad (impulso)
+        p.vel += (F_plate / p.mass) * dt;
     }
 }
 
