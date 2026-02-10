@@ -1,6 +1,6 @@
 # Estado Actual del Proyecto
 
-**Última actualización**: 2026-01-20 (v0.2)
+**Última actualización**: 2026-02-XX (v0.3)
 
 Este documento describe el estado actual de implementación del Sistema Modular Audiovisual, qué componentes están completados, en desarrollo o pendientes.
 
@@ -43,6 +43,21 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Fuerza de gesto con influencia gaussiana
 - ✅ Parámetros ajustables: `k_gesture`, `sigma`, `speed_ref`
 - ✅ Sistema de partículas responde a input del mouse
+
+**v0.3: Chladni State - Auto-organización** ✅ **COMPLETADA**
+- ✅ **Chladni State**: Modo que permite auto-organización sin mouse
+  - Toggle con tecla **SPACE**:** activa/desactiva el modo
+  - Cuando activo: `k_home = 0.01f` (partículas libres de retorno al origen)
+  - Cuando inactivo: comportamiento idéntico a v0.2
+- ✅ **Plate Shaker**: Sistema de inyección de energía coherente
+  - Fuerza proporcional a energía local `E = U_norm²` (más fuerte en antinodos)
+  - Dirección coherente usando `ofSignedNoise()` (permite settling en nodos)
+  - Energía normalizada y shaped para concentrar agitación
+  - Solo activo cuando Chladni State está ON y `plate_amp >= 0.01`
+- ✅ **Mejoras técnicas**:
+  - Clamp de `dt` para consistencia FPS
+  - Clamp relativo de fuerza shaker (`F_SHAKER_MAX = 0.5 * F_MAX`)
+  - Preservación completa de comportamiento v0.2 cuando Chladni está OFF
 
 ---
 

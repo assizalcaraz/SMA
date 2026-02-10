@@ -2,7 +2,7 @@
 
 Especificación técnica detallada del módulo de partículas. Documentación para desarrolladores.
 
-**Última actualización:** Fase 4 completada + Mejoras Chladni (2026-02-10)
+**Última actualización:** v0.3 Chladni State (2026-02-XX)
 
 ---
 
@@ -153,6 +153,14 @@ struct RateLimiter {
 | `burst` | `float` | 100-500 | 300.0 | Burst máximo de tokens |
 | `max_hits_per_frame` | `int` | 5-20 | 10 | Máximo de hits por frame |
 
+**v0.3 - Parámetros Chladni State:**
+
+| Variable | Tipo | Default | Descripción |
+|----------|------|---------|-------------|
+| `chladniState` | `bool` | `false` | Estado ON/OFF del modo Chladni (toggle con SPACE) |
+| `k_home_previous` | `float` | `k_home` | Valor guardado de k_home antes de activar Chladni |
+| `plateShakerStrength` | `float` | 30.0 | Intensidad del Plate Shaker (constante) |
+
 ### Métodos Principales
 
 #### `ofApp::setup()`
@@ -169,14 +177,18 @@ Inicializa:
 
 Loop principal de actualización (llamado cada frame):
 
-1. Actualiza parámetros desde sliders
-2. Detecta cambios en N_particles y redimensiona si es necesario
-3. `updateMouseInput()` - Actualiza posición y velocidad del mouse
-4. `applyGestureForce()` - Aplica fuerza de gesto a partículas
-5. Actualiza física de todas las partículas
-6. `checkCollisions()` - Detecta colisiones con bordes y genera eventos
-7. `updateRateLimiter(dt)` - Actualiza tokens del rate limiter
-8. `processPendingHits()` - Procesa y valida eventos de hit
+1. **v0.3**: Lógica de Chladni State para `k_home`:
+   - Si `chladniState == true`: `k_home = 0.01f` (ignora slider)
+   - Si `chladniState == false`: `k_home = kHomeSlider` (comportamiento v0.2)
+2. Actualiza parámetros desde sliders (excepto `k_home` si Chladni está activo)
+3. Detecta cambios en N_particles y redimensiona si es necesario
+4. `updateMouseInput()` - Actualiza posición y velocidad del mouse
+5. `applyGestureForce()` - Aplica fuerza de gesto a partículas
+6. `applyPlateForce()` - Aplica fuerza de placa (incluye Plate Shaker v0.3 si está activo)
+7. Actualiza física de todas las partículas
+8. `checkCollisions()` - Detecta colisiones con bordes y genera eventos
+9. `updateRateLimiter(dt)` - Actualiza tokens del rate limiter
+10. `processPendingHits()` - Procesa y valida eventos de hit
 
 #### `ofApp::updateMouseInput()`
 
@@ -300,6 +312,37 @@ F = -∇E * forceIntensity * spatial_weight
 - `plate_freq` solo afecta intensidad de excitación, no el patrón espacial
 - Partículas se mueven hacia nodos (donde U ≈ 0)
 - Modos degenerados se mezclan para restaurar simetría
+
+#### `ofApp::applyPlateForce()` — v0.3: Plate Shaker
+
+**v0.3 Extensión:** Sistema de inyección de energía coherente (Plate Shaker) que permite auto-organización sin mouse.
+
+**Algoritmo Plate Shaker:**
+1. **Condición de activación**: Solo si `chladniState == true` Y `plateAmp >= 0.01f`
+2. **Energía normalizada**:
+   - `E = U_norm²` (ya calculado)
+   - `E_clamped = ofClamp(E, 0.0f, 1.0f)` (asegurar rango [0,1])
+   - `E_shaped = pow(E_clamped, 2.0f)` (concentrar agitación en antinodos)
+3. **Magnitud**: `shaker_magnitude = plateShakerStrength * plateAmp * E_shaped`
+4. **Dirección coherente** (Opción A - RECOMENDADA):
+   - `dir_x = ofSignedNoise(x * 0.01f, y * 0.01f, time * 0.5f)`
+   - `dir_y = ofSignedNoise(x * 0.01f + 100.0f, y * 0.01f + 100.0f, time * 0.5f)`
+   - `direction = normalize(vec2(dir_x, dir_y))`
+   - Usa `ofSignedNoise()` para producir agitación espacialmente coherente que permite settling en nodos
+5. **Fuerza**: `F_shaker = direction * shaker_magnitude`
+6. **Clamp relativo**: `F_SHAKER_MAX = 0.5f * F_MAX` (proporción de constante existente)
+7. **Aplicación**: `p.vel += (F_shaker / p.mass) * dt`
+
+**Parámetros v0.3:**
+- `plateShakerStrength = 30.0f`: Intensidad base del shaker
+- `F_SHAKER_MAX = 0.5f * F_MAX`: Límite relativo (no magic number)
+- `dt` clamp: `if (dt > 1.0f/30.0f) dt = 1.0f/30.0f` (consistencia FPS)
+
+**Características:**
+- Independiente de `k_gesture` y mouse input
+- Fuerza proporcional a energía local (más fuerte en antinodos)
+- Dirección coherente permite settling en líneas nodales
+- No usa `ofRandom()` por partícula (evita jitter incoherente)
 
 #### `ofApp::initializeParticles(int n)`
 

@@ -624,6 +624,21 @@ max_hits/frame: 9
 - Agregados: Presets de cámara (teclas 1-4)
 - Mejoras: Contadores de diagnóstico para análisis de renderizado
 
+**v0.3 (Chladni State - Auto-organización):**
+- **Chladni State**: Nuevo modo que permite auto-organización de partículas sin interacción con mouse
+  - Toggle con tecla **SPACE**: activa/desactiva el modo Chladni
+  - Cuando está activo: `k_home` se fuerza a 0.01 (partículas libres de retorno al origen)
+  - Cuando está inactivo: comportamiento idéntico a v0.2
+- **Plate Shaker**: Sistema de inyección de energía coherente que agita partículas basado en energía local de la placa
+  - Fuerza proporcional a energía local `E = U_norm²` (más fuerte en antinodos, casi cero en nodos)
+  - Dirección coherente usando `ofSignedNoise()` (permite settling en líneas nodales)
+  - Energía normalizada y shaped para concentrar agitación en antinodos
+  - Solo activo cuando Chladni State está ON y `plate_amp >= 0.01`
+- **Mejoras técnicas**:
+  - Clamp de `dt` para consistencia FPS (máximo 30fps equivalente)
+  - Clamp relativo de fuerza shaker (`F_SHAKER_MAX = 0.5 * F_MAX`)
+  - Preservación completa de comportamiento v0.2 cuando Chladni State está OFF
+
 ---
 
 **Estado:** Comunicación OSC (Fase 5) ✅ completada - Los eventos se envían automáticamente al sintetizador JUCE en puerto 9000.
