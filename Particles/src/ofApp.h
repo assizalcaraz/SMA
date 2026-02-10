@@ -154,6 +154,7 @@ class ofApp : public ofBaseApp{
 		void applyGestureForce();
 		void applyPlateForce();
 		void drawDebugOverlay();
+		void getModeCoefficients(int mode, int& m, int& n, float& a, float& b);  // Mezcla de modos degenerados
 		
 		// Funciones de colisiones y eventos
 		void checkCollisions();

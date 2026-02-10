@@ -420,6 +420,25 @@ void ofApp::applyGestureForce() {
 }
 
 //--------------------------------------------------------------
+void ofApp::getModeCoefficients(int mode, int& m, int& n, float& a, float& b) {
+    // Mapeo determinístico de mode → (m,n) y coeficientes (a,b)
+    // Para modos degenerados (m != n): a² + b² = 1, a y b fijos por mode
+    // Para modos simétricos (m == n): a=1, b=0 (comportamiento original)
+    
+    switch (mode) {
+        case 0: m = 1; n = 1; a = 1.0f; b = 0.0f; break;  // Modo fundamental (simétrico)
+        case 1: m = 1; n = 2; a = 0.707106781f; b = 0.707106781f; break;  // 1x2 (degenerado, mezcla 50/50)
+        case 2: m = 2; n = 1; a = 0.707106781f; b = 0.707106781f; break;  // 2x1 (degenerado, mezcla 50/50)
+        case 3: m = 2; n = 2; a = 1.0f; b = 0.0f; break;  // 2x2 (simétrico)
+        case 4: m = 3; n = 1; a = 0.707106781f; b = 0.707106781f; break;  // 3x1 (degenerado)
+        case 5: m = 1; n = 3; a = 0.707106781f; b = 0.707106781f; break;  // 1x3 (degenerado)
+        case 6: m = 3; n = 2; a = 0.707106781f; b = 0.707106781f; break;  // 3x2 (degenerado)
+        case 7: m = 2; n = 3; a = 0.707106781f; b = 0.707106781f; break;  // 2x3 (degenerado)
+        default: m = 1; n = 1; a = 1.0f; b = 0.0f; break;
+    }
+}
+
+//--------------------------------------------------------------
 void ofApp::applyPlateForce() {
     // Solo aplicar fuerza si la amplitud del plate es significativa
     if (plateAmp < 0.01f) {
@@ -441,22 +460,14 @@ void ofApp::applyPlateForce() {
     float plateSizeY = winHeight;
     
     // ============================================================
-    // 2. MAPEO DE plate_mode → (m, n) - SOLO PATRÓN ESPACIAL
+    // 2. MAPEO DE plate_mode → (m, n) Y COEFICIENTES (a, b)
     // ============================================================
     // plate_mode define el patrón espacial (nodos/antinodos)
     // NO debe depender de freq - el patrón es estacionario
+    // Para modos degenerados (m != n), se mezclan ambos modos
     int m, n;
-    switch (plateMode) {
-        case 0: m = 1; n = 1; break;  // Modo fundamental
-        case 1: m = 1; n = 2; break;  // 1 línea horizontal, 2 verticales
-        case 2: m = 2; n = 1; break;  // 2 líneas horizontales, 1 vertical
-        case 3: m = 2; n = 2; break;  // 2x2 grid
-        case 4: m = 3; n = 1; break;  // 3 líneas horizontales
-        case 5: m = 1; n = 3; break;  // 3 líneas verticales
-        case 6: m = 3; n = 2; break;  // 3x2
-        case 7: m = 2; n = 3; break;  // 2x3
-        default: m = 1; n = 1; break;
-    }
+    float a, b;
+    getModeCoefficients(plateMode, m, n, a, b);
     
     // ============================================================
     // 3. FRECUENCIA SOLO PARA INTENSIDAD/ANIMACIÓN TEMPORAL
@@ -466,13 +477,22 @@ void ofApp::applyPlateForce() {
     float freqNorm = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
     float excitationIntensity = 0.5f + freqNorm * 0.5f; // 0.5 a 1.0
     
-    // Intensidad de fuerza: combina amplitud y frecuencia (solo para intensidad)
-    float forceIntensity = plateForceStrength * plateAmp * excitationIntensity;
+    // Intensidad de fuerza base: combina amplitud y frecuencia (solo para intensidad)
+    float forceIntensityBase = plateForceStrength * plateAmp * excitationIntensity;
     
     // ============================================================
-    // 4. CAMPO DE CHLADNI ESTACIONARIO (solo depende de modo y posición)
+    // 4. PARÁMETROS DE ESTABILIDAD Y NORMALIZACIÓN
     // ============================================================
     const float PI_VAL = 3.14159265358979323846f;
+    
+    // Parámetros de estabilidad (constantes locales)
+    const float F_MAX = 100.0f;  // Límite de magnitud de fuerza
+    const float THRESHOLD_NODE = 0.1f;  // Umbral de |U| para activar amortiguación extra
+    const float EXTRA_DAMPING = 0.3f;  // Fuerza de amortiguación adicional
+    const float SIGMA_SPATIAL = 0.4f;  // Ancho gaussiano para centrado (en coordenadas normalizadas)
+    
+    // Factor de normalización por modo (para evitar que modos altos dominen)
+    float norm_factor = 1.0f / (float)(m + n);
     
     // Aplicar fuerza a cada partícula basada en campo de Chladni
     float dt = ofGetLastFrameTime();
@@ -496,55 +516,106 @@ void ofApp::applyPlateForce() {
         yHat = ofClamp(yHat, 0.0f, 1.0f);
         
         // ============================================================
-        // 4b. CALCULAR CAMPO ESTACIONARIO U(x̂, ŷ) = sin(mπx̂) * sin(nπŷ)
+        // 4b. CALCULAR CAMPO ESTACIONARIO CON MEZCLA DE MODOS DEGENERADOS
         // ============================================================
-        // Este es el modo propio estacionario - NO depende de tiempo ni frecuencia
-        float U_field = sin(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
+        // Calcular ambos términos del campo si m != n (modos degenerados)
+        float U1 = sin(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
+        float U2 = sin(n * PI_VAL * xHat) * sin(m * PI_VAL * yHat);
         
-        // Magnitud del campo (energía de vibración en ese punto)
-        // |U| alto = antinodo (vibra mucho)
-        // |U| bajo ≈ 0 = nodo (no vibra, donde se acumula material)
-        float fieldMagnitude = fabs(U_field);
+        // Combinar campo según coeficientes
+        float U_field = a * U1 + b * U2;
         
         // ============================================================
-        // 4c. CALCULAR GRADIENTE DEL CAMPO (dirección hacia nodos)
+        // 4c. CALCULAR GRADIENTES DE AMBOS TÉRMINOS Y COMBINAR
         // ============================================================
-        // Gradiente de U en coordenadas normalizadas
-        float dU_dxHat = m * PI_VAL * cos(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
-        float dU_dyHat = n * PI_VAL * sin(m * PI_VAL * xHat) * cos(n * PI_VAL * yHat);
+        // Gradientes de U1 y U2 en coordenadas normalizadas
+        float dU1_dxHat = m * PI_VAL * cos(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
+        float dU1_dyHat = n * PI_VAL * sin(m * PI_VAL * xHat) * cos(n * PI_VAL * yHat);
+        
+        float dU2_dxHat = n * PI_VAL * cos(n * PI_VAL * xHat) * sin(m * PI_VAL * yHat);
+        float dU2_dyHat = m * PI_VAL * sin(n * PI_VAL * xHat) * cos(m * PI_VAL * yHat);
+        
+        // Combinar gradientes según coeficientes
+        float dU_dxHat = a * dU1_dxHat + b * dU2_dxHat;
+        float dU_dyHat = a * dU1_dyHat + b * dU2_dyHat;
+        
+        // ============================================================
+        // 4d. NORMALIZAR U Y ∇U ANTES DE CALCULAR ENERGÍA
+        // ============================================================
+        // Normalizar para evitar que modos altos dominen
+        float U_norm = U_field * norm_factor;
+        float dU_dxHat_norm = dU_dxHat * norm_factor;
+        float dU_dyHat_norm = dU_dyHat * norm_factor;
+        
+        // ============================================================
+        // 4e. CALCULAR ENERGÍA E = U² Y SU GRADIENTE ∇E = 2U∇U
+        // ============================================================
+        // Energía: E = U²
+        float E = U_norm * U_norm;
+        
+        // Gradiente de energía: ∇E = 2U * ∇U
+        float dE_dxHat = 2.0f * U_norm * dU_dxHat_norm;
+        float dE_dyHat = 2.0f * U_norm * dU_dyHat_norm;
         
         // Convertir gradiente de coordenadas normalizadas a coordenadas mundo
-        // (escalar por tamaño de placa para mantener unidades correctas)
-        float gradX_world = dU_dxHat / plateSizeX;
-        float gradY_world = dU_dyHat / plateSizeY;
+        float gradX_world = dE_dxHat / plateSizeX;
+        float gradY_world = dE_dyHat / plateSizeY;
         
-        ofVec2f gradient = ofVec2f(gradX_world, gradY_world);
-        float gradMag = gradient.length();
+        ofVec2f gradE = ofVec2f(gradX_world, gradY_world);
+        float gradMag = gradE.length();
         
         if (gradMag < 0.0001f) {
             // Estamos muy cerca de un nodo exacto, no aplicar fuerza
             continue;
         }
         
-        // Normalizar gradiente
-        gradient.normalize();
+        // ============================================================
+        // 4f. CENTRADO SUAVE DE EXCITACIÓN (peso espacial gaussiano)
+        // ============================================================
+        // Calcular distancia al centro usando coordenadas normalizadas
+        float centerX_norm = 0.5f;
+        float centerY_norm = 0.5f;
+        float dist_norm = sqrt((xHat - centerX_norm) * (xHat - centerX_norm) + 
+                               (yHat - centerY_norm) * (yHat - centerY_norm));
+        
+        // Aplicar peso gaussiano (reduce fuerza en bordes, centra excitación)
+        float spatial_weight = exp(-dist_norm * dist_norm / (2.0f * SIGMA_SPATIAL * SIGMA_SPATIAL));
+        
+        // Intensidad de fuerza con peso espacial
+        float forceIntensity = forceIntensityBase * spatial_weight;
         
         // ============================================================
-        // 4d. FUERZA HACIA NODOS (gradiente negativo del campo)
+        // 4g. CALCULAR FUERZA F = -∇E
         // ============================================================
-        // Las partículas se mueven "cuesta abajo" hacia nodos
-        // Fuerza proporcional a:
-        // - fieldMagnitude: más fuerza en antinodos (donde vibra más)
-        // - forceIntensity: controlado por amp y freq (solo intensidad)
-        float forceScale = fieldMagnitude * forceIntensity;
-        
-        // Dirección: opuesta al gradiente (hacia nodos donde U es mínimo)
-        ofVec2f F_plate = -gradient * forceScale;
+        // Fuerza es opuesta al gradiente de energía (hacia nodos donde E es mínimo)
+        ofVec2f F_plate = -gradE * forceIntensity;
         
         // ============================================================
-        // 4e. APLICAR FUERZA
+        // 4h. CLAMP MAGNITUD DE FUERZA (estabilidad)
+        // ============================================================
+        float F_mag = F_plate.length();
+        if (F_mag > F_MAX) {
+            F_plate = F_plate * (F_MAX / F_mag);
+        }
+        
+        // ============================================================
+        // 4i. APLICAR FUERZA A VELOCIDAD
         // ============================================================
         p.vel += (F_plate / p.mass) * dt;
+        
+        // ============================================================
+        // 4j. AMORTIGUACIÓN ADICIONAL CERCA DE NODOS
+        // ============================================================
+        // Detectar cuando |U| < threshold_node y aplicar amortiguación extra
+        float U_abs = fabs(U_norm);
+        if (U_abs < THRESHOLD_NODE) {
+            // Calcular fuerza de amortiguación (aumenta cuando |U| → 0)
+            float damping_strength = EXTRA_DAMPING * (1.0f - U_abs / THRESHOLD_NODE);
+            // Factor de amortiguación que REDUCE velocidad (factor < 1.0)
+            float damping_factor = 1.0f / (1.0f + damping_strength);
+            // Aplicar a velocidad
+            p.vel *= damping_factor;
+        }
     }
 }
 
