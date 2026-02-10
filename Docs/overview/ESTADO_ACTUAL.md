@@ -96,6 +96,11 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Fail-safe con fade-out automático (2 segundos timeout)
 - ✅ Integración en SynthesisEngine (mezcla pre-limiter)
 - ✅ Thread-safe (atomic para parámetros, buffer pre-allocado)
+- ✅ **Corrección física de Chladni** (2026-02-10):
+  - Separación patrón espacial (plate_mode) / frecuencia temporal (plate_freq)
+  - Sistema de coordenadas fijo (centro inmutable en centro de ventana)
+  - Campo estacionario U(x̂,ŷ) = sin(mπx̂)*sin(nπŷ) según teoría de Chladni
+  - Partículas se acumulan en nodos (líneas nodales estacionarias)
 - ⏳ **Pendiente**: Calibración de niveles y optimización (requiere testing en tiempo de ejecución)
 
 ---
@@ -148,6 +153,10 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Colisiones con bordes y partícula-partícula
 - ✅ Generación de eventos de hit
 - ✅ Comunicación OSC funcionando
+- ✅ **Plate Controller** - Control de vibración de placa de Chladni:
+  - Fuerzas físicas basadas en modos propios de vibración
+  - Partículas se acumulan en líneas nodales según modo
+  - Patrón espacial estacionario (no depende de frecuencia)
 
 **Documentación**: Completa en `Docs/Particles/`
 
@@ -296,4 +305,4 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ---
 
-**Última actualización**: 2026-02-XX (Sistema Plate implementado)
+**Última actualización**: 2026-02-10 (Sistema Plate implementado y corregido según física de Chladni)

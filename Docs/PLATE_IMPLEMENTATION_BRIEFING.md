@@ -269,6 +269,35 @@ Todas las fases del plan se han completado exitosamente:
 **Documentación:**
 - `Docs/api-osc.md` - Sección `/plate` agregada con contrato completo
 
+### Corrección Post-Implementación (2026-02-10)
+
+**Problema identificado:**
+- `plate_freq` estaba escalando los modos (m, n), cambiando el patrón espacial
+- El centro de la placa se movía al cambiar modo/frecuencia
+- Se usaban coordenadas del mundo directamente en lugar de coordenadas de placa
+
+**Solución implementada:**
+- ✅ Separación patrón espacial / frecuencia temporal:
+  - `plate_mode` → define (m, n) del patrón espacial (estacionario)
+  - `plate_freq` → solo para intensidad de excitación, no modifica el patrón
+- ✅ Sistema de coordenadas fijo:
+  - Centro de placa: siempre el centro de la ventana (inmutable)
+  - Transformación: `pos_world → pos_plate → (x̂, ŷ) normalizado`
+- ✅ Campo estacionario correcto:
+  - `U(x̂, ŷ) = sin(mπx̂) * sin(nπŷ)` — solo depende de modo y posición
+  - No depende de tiempo ni frecuencia
+  - Los nodos están donde `U ≈ 0` (estacionarios)
+- ✅ Movimiento hacia nodos:
+  - Calcula gradiente del campo estacionario
+  - Fuerza en dirección opuesta al gradiente (hacia nodos)
+  - Intensidad proporcional a `|U|` (más fuerza en antinodos)
+
+**Resultado:**
+- Patrón permanece fijo al cambiar `plate_freq` (solo cambia intensidad)
+- Centro no se mueve (siempre en centro de ventana)
+- Partículas se acumulan en líneas nodales según modo
+- Comportamiento físico correcto según teoría de Chladni
+
 ### Pendiente
 
 - ⏳ **Fase 6 (Calibración):** Requiere testing en tiempo de ejecución para ajustar:
