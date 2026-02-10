@@ -147,6 +147,11 @@ class ofApp : public ofBaseApp{
 		float plateSendInterval;  // 0.05s = 20 Hz
 		float plateForceStrength;  // Intensidad de fuerza del plate (ajustable)
 		
+		// v0.3: Chladni State variables
+		bool chladniState;         // Estado actual: ON/OFF
+		float k_home_previous;      // Valor guardado de k_home antes de activar Chladni
+		float plateShakerStrength; // Intensidad del Plate Shaker, constante ajustable
+		
 		// Funciones auxiliares
 		void initializeParticles(int n);
 		void resizeParticles(int newN);

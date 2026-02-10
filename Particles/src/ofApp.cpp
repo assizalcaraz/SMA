@@ -106,6 +106,11 @@ void ofApp::setup(){
     gui.add(plateAmpSlider.setup("plate_amp", plateAmp, 0.0f, 1.0f));
     gui.add(plateModeSlider.setup("plate_mode", plateMode, 0, 7));
     
+    // v0.3: Inicializar Chladni State
+    chladniState = false;
+    k_home_previous = k_home;  // Guardar valor inicial
+    plateShakerStrength = 30.0f;  // Constante para fuerza del shaker
+    
     // Inicializar partículas
     initializeParticles(initialN);
     
@@ -116,7 +121,15 @@ void ofApp::setup(){
 //--------------------------------------------------------------
 void ofApp::update(){
     // Actualizar parámetros desde sliders
-    k_home = kHomeSlider;
+    // v0.3: Chladni State logic - manejar k_home según estado
+    if (chladniState) {
+        // Chladni ON: forzar k_home a 0 (ignorar slider)
+        // NO guardar k_home_previous aquí (se guarda solo en keyPressed() al activar)
+        k_home = 0.01f;  // Valor muy bajo para estabilidad numérica
+    } else {
+        // Chladni OFF: usar valor del slider normalmente (comportamiento v0.2)
+        k_home = kHomeSlider;
+    }
     k_drag = kDragSlider;
     k_gesture = kGestureSlider;
     sigma = sigmaSlider;
@@ -497,6 +510,8 @@ void ofApp::applyPlateForce() {
     // Aplicar fuerza a cada partícula basada en campo de Chladni
     float dt = ofGetLastFrameTime();
     if (dt <= 0.0f) dt = 0.016f;
+    // v0.3: Asegurar dt consistente (clamp para evitar variaciones extremas de FPS)
+    if (dt > 1.0f/30.0f) dt = 1.0f/30.0f;  // Máximo 30fps equivalente
     
     for (auto& p : particles) {
         // ============================================================
@@ -615,6 +630,51 @@ void ofApp::applyPlateForce() {
             float damping_factor = 1.0f / (1.0f + damping_strength);
             // Aplicar a velocidad
             p.vel *= damping_factor;
+        }
+        
+        // ============================================================
+        // v0.3: PLATE SHAKER FORCE (inyección de energía sin mouse)
+        // ============================================================
+        // Solo aplicar si Chladni State está activo y plate tiene amplitud significativa
+        if (chladniState && plateAmp >= 0.01f) {
+            // Calcular energía normalizada y shaped
+            float E_clamped = ofClamp(E, 0.0f, 1.0f);  // Asegurar rango [0,1]
+            float E_shaped = pow(E_clamped, 2.0f);  // Concentrar agitación en antinodos
+            
+            // Calcular magnitud del shaker
+            float shaker_magnitude = plateShakerStrength * plateAmp * E_shaped;
+            
+            // Dirección coherente usando noise field (Opción A - RECOMENDADA)
+            // Usa ofSignedNoise para producir agitación espacialmente coherente
+            float noise_scale = 0.01f;  // Escala espacial
+            float time_scale = 0.5f;   // Velocidad temporal
+            float offset = 100.0f;      // Offset para segunda componente
+            float time = ofGetElapsedTimef();
+            
+            float dir_x = ofSignedNoise(p.pos.x * noise_scale, p.pos.y * noise_scale, time * time_scale);
+            float dir_y = ofSignedNoise(p.pos.x * noise_scale + offset, p.pos.y * noise_scale + offset, time * time_scale);
+            
+            ofVec2f direction(dir_x, dir_y);
+            float dir_mag = direction.length();
+            if (dir_mag > 0.001f) {
+                direction = direction / dir_mag;  // Normalizar
+            } else {
+                // Fallback si dirección es demasiado pequeña
+                direction = ofVec2f(1.0f, 0.0f);
+            }
+            
+            // Fuerza del shaker
+            ofVec2f F_shaker = direction * shaker_magnitude;
+            
+            // Clamp magnitud relativo a F_MAX (no magic number)
+            const float F_SHAKER_MAX = 0.5f * F_MAX;
+            float F_shaker_mag = F_shaker.length();
+            if (F_shaker_mag > F_SHAKER_MAX) {
+                F_shaker = F_shaker * (F_SHAKER_MAX / F_shaker_mag);
+            }
+            
+            // Aplicar fuerza del shaker a velocidad
+            p.vel += (F_shaker / p.mass) * dt;
         }
     }
 }
@@ -931,6 +991,21 @@ void ofApp::drawDebugOverlay() {
 
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key){
+    // v0.3: SPACE toggle para Chladni State
+    if (key == ' ' || key == OF_KEY_SPACE) {
+        if (!chladniState) {
+            // Al activar Chladni State: guardar k_home actual
+            k_home_previous = k_home;
+            chladniState = true;
+        } else {
+            // Al desactivar Chladni State: restaurar k_home y sincronizar slider
+            k_home = k_home_previous;
+            kHomeSlider = k_home_previous;  // Sincronizar UI
+            chladniState = false;
+        }
+        return;  // No procesar otros casos si se presionó SPACE
+    }
+    
     // Presets de cámara con teclas 1-4
     switch(key) {
         case '1':
