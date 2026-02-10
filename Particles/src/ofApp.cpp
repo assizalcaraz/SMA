@@ -428,55 +428,74 @@ void ofApp::applyPlateForce() {
     
     float winWidth = ofGetWidth();
     float winHeight = ofGetHeight();
-    float centerX = winWidth * 0.5f;
-    float centerY = winHeight * 0.5f;
     
-    // Mapear frecuencia a posición vertical del centro de fuerza
-    // Frecuencia baja (20 Hz) → parte inferior, alta (2000 Hz) → parte superior
-    float freqNorm = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
-    float plateCenterY = centerY + (freqNorm - 0.5f) * winHeight * 0.6f; // Rango ±30% de altura
+    // Mapear plateMode (0-7) a modos de Chladni (m, n)
+    // Modos típicos de placa cuadrada: (m,n) donde m y n son números de líneas nodales
+    int m, n;
+    switch (plateMode) {
+        case 0: m = 1; n = 1; break;  // Modo fundamental
+        case 1: m = 2; n = 1; break;  // 2 líneas horizontales, 1 vertical
+        case 2: m = 1; n = 2; break;  // 1 línea horizontal, 2 verticales
+        case 3: m = 2; n = 2; break;  // 2x2 grid
+        case 4: m = 3; n = 1; break;  // 3 líneas horizontales
+        case 5: m = 1; n = 3; break;  // 3 líneas verticales
+        case 6: m = 3; n = 2; break;  // 3x2
+        case 7: m = 2; n = 3; break;  // 2x3
+        default: m = 1; n = 1; break;
+    }
     
-    // Mapear modo a posición horizontal (0-7 → izquierda a derecha)
-    float modeNorm = plateMode / 7.0f; // 0.0 a 1.0
-    float plateCenterX = centerX + (modeNorm - 0.5f) * winWidth * 0.6f; // Rango ±30% de ancho
-    
-    ofVec2f plateCenter = ofVec2f(plateCenterX, plateCenterY);
-    
-    // Radio de influencia basado en amplitud (más amplitud = más alcance)
-    float influenceRadius = sigma * (0.5f + plateAmp * 1.5f); // 0.5x a 2.0x de sigma
+    // Escala de frecuencia: mapear plateFreq a escala de modos
+    // Frecuencias más altas = modos más altos (más líneas nodales)
+    float freqScale = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
+    float effectiveM = m * (1.0f + freqScale * 2.0f); // Escalar m según frecuencia
+    float effectiveN = n * (1.0f + freqScale * 2.0f); // Escalar n según frecuencia
     
     // Intensidad de fuerza proporcional a amplitud
     float forceIntensity = plateForceStrength * plateAmp;
     
-    // Aplicar fuerza a cada partícula
+    // Aplicar fuerza a cada partícula basada en campo de Chladni
     float dt = ofGetLastFrameTime();
     if (dt <= 0.0f) dt = 0.016f;
     
     for (auto& p : particles) {
-        // Distancia desde partícula al centro del plate
-        ofVec2f particlePosPixels = ofVec2f(p.pos.x, p.pos.y);
-        ofVec2f diff = particlePosPixels - plateCenter;
-        float r = diff.length();
+        // Normalizar posición de partícula a rango [0, 1]
+        float xNorm = ofClamp(p.pos.x / winWidth, 0.0f, 1.0f);
+        float yNorm = ofClamp(p.pos.y / winHeight, 0.0f, 1.0f);
         
-        // Calcular dirección radial desde plate hacia partícula
-        ofVec2f push_dir;
-        if (r > 0.001f) {
-            push_dir = diff.getNormalized(); // Dirección desde plate hacia partícula
+        // Calcular campo de vibración de Chladni usando funciones seno/coseno
+        // Para placa cuadrada con bordes fijos (antinodos en bordes):
+        // Campo = sin(m*π*x) * sin(n*π*y)
+        // Los nodos están donde el campo es cero o mínimo
+        // Los antinodos están donde el campo es máximo
+        
+        // Usar constante PI de openFrameworks (definida en ofConstants.h)
+        const float PI_VAL = 3.14159265358979323846f;
+        
+        float chladniField = sin(effectiveM * PI_VAL * xNorm) * sin(effectiveN * PI_VAL * yNorm);
+        
+        // Calcular gradiente del campo (dirección hacia nodos)
+        // Gradiente negativo = dirección hacia nodos (donde campo es mínimo)
+        float gradX = -effectiveM * PI_VAL * cos(effectiveM * PI_VAL * xNorm) * sin(effectiveN * PI_VAL * yNorm);
+        float gradY = -effectiveN * PI_VAL * sin(effectiveM * PI_VAL * xNorm) * cos(effectiveN * PI_VAL * yNorm);
+        
+        // Normalizar gradiente para obtener dirección
+        ofVec2f gradientDir = ofVec2f(gradX, gradY);
+        float gradMag = gradientDir.length();
+        
+        if (gradMag > 0.001f) {
+            gradientDir.normalize();
         } else {
-            continue; // Partícula exactamente en el centro, saltar
+            continue; // En un nodo exacto, no aplicar fuerza
         }
         
-        // Influencia gaussiana por distancia
-        float w = exp(-(r * r) / (2.0f * influenceRadius * influenceRadius));
+        // Intensidad de fuerza basada en magnitud del campo
+        // Partículas en antinodos (campo alto) → más fuerza hacia nodos
+        // Partículas cerca de nodos (campo bajo) → menos fuerza
+        float fieldMagnitude = fabs(chladniField);
+        float forceScale = fieldMagnitude * forceIntensity;
         
-        // Solo aplicar fuerza si la influencia es significativa
-        if (w < 0.01f) {
-            continue; // Influencia demasiado pequeña, saltar
-        }
-        
-        // Fuerza del plate: push radial que empuja partículas alejándolas del centro
-        // La fuerza es proporcional a la amplitud y la cercanía (gaussiana)
-        ofVec2f F_plate = forceIntensity * w * push_dir;
+        // Aplicar fuerza hacia nodos (dirección del gradiente negativo)
+        ofVec2f F_plate = gradientDir * forceScale;
         
         // Aplicar fuerza directamente a la velocidad (impulso)
         p.vel += (F_plate / p.mass) * dt;
