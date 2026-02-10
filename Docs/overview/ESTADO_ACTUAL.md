@@ -111,6 +111,7 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Fail-safe con fade-out automático (2 segundos timeout)
 - ✅ Integración en SynthesisEngine (mezcla pre-limiter)
 - ✅ Thread-safe (atomic para parámetros, buffer pre-allocado)
+- ✅ **Control de volumen en UI JUCE** con mapeo exponencial (slider 0.1 → volumen 0.5)
 - ✅ **Corrección física de Chladni** (2026-02-10):
   - Separación patrón espacial (plate_mode) / frecuencia temporal (plate_freq)
   - Sistema de coordenadas fijo (centro inmutable en centro de ventana)
@@ -196,6 +197,8 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 **Archivos principales**:
 - `Main.cpp` — Punto de entrada ✅
 - `MainComponent.h/cpp` — UI y orquestación ✅
+  - Controles: Voices, Pitch (metalness), Waveform, SubOsc Mix, **Plate Volume**, Limiter toggle
+  - **Plate Volume**: Control de volumen con mapeo exponencial (0.1 → 0.5 en amplitud)
 - `ModalVoice.h/cpp` — Resonador modal individual ✅
 - `VoiceManager.h/cpp` — Gestión de polyphony ✅
 - `SynthesisEngine.h/cpp` — Motor de síntesis principal ✅
@@ -216,6 +219,11 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - ✅ Receptor OSC para mensajes `/plate`
 - ✅ Mezcla pre-limiter (plate + partículas → limiter)
 - ✅ UI básica con controles y indicadores
+- ✅ **Control de volumen Plate** en UI JUCE con mapeo exponencial:
+  - Slider 0.0 → Volumen 0.0 (silencio)
+  - Slider 0.1 → Volumen 0.5 (mitad del rango de amplitud)
+  - Slider 1.0 → Volumen 1.0 (volumen completo)
+  - Mapeo exponencial en rango 0.0-0.1 para control preciso en volúmenes bajos
 - ✅ Master limiter y saturación opcional
 - ✅ Optimizaciones RT-safe (sin allocations en audio thread)
 
