@@ -2,10 +2,11 @@
 
 ## 0. Objetivo
 
-Construir un sistema audiovisual en tiempo real dividido en **dos aplicaciones independientes**:
+Construir un sistema audiovisual en tiempo real dividido en **tres aplicaciones independientes**:
 
 * **App A (openFrameworks / ISTR):** tracking corporal + simulación de partículas + generación de eventos sonoros.
 * **App B (JUCE / Standalone):** sintetizador que recibe **OSC y genera el audio (timbre "metálico/partículas").
+* **App C (MAAD-2-CALIB / v0.4):** módulo de calibración y validación que orquesta sesiones reproducibles y captura datos para análisis científico.
 
 Las apps se integran mediante un **contrato de mensajes estable** (OSC).
 
@@ -69,9 +70,33 @@ Las apps se integran mediante un **contrato de mensajes estable** (OSC).
   * Synth per-voice / modal resonator / bank resonant filters
 * Output: audio
 
+**App C — MAAD-2-CALIB (v0.4)**
+
+* Control:
+
+  * Cliente OSC que envía comandos `/test/*` para orquestar sesiones
+  * Comandos: `/test/start`, `/test/stop`, `/test/seek`, `/test/rate`, `/test/seed`, `/test/beep`
+* Registration:
+
+  * Servidor OSC que escucha eventos (`/hit`, `/state`, `/plate`) en puerto 9000
+  * Captura de audio en tiempo real
+  * Registro estructurado: NDJSON (eventos OSC) + WAV (audio) + JSON (metadata)
+  * Salida: directorios `runs/YYYYMMDD_HHMMSS/` por sesión
+* Analysis:
+
+  * Notebooks Jupyter para análisis offline
+  * Técnicas: DFT, STFT, análisis espectral, validación de coherencia
+  * Generación de reportes HTML con visualizaciones
+
 ### 2.2 Flujo de datos
 
+**Flujo principal (tiempo real):**
 Webcam → MediaPipe → (puntos y velocidades) → Fuerzas → Partículas → Colisiones → Eventos → OSC → JUCE → Audio
+
+**Flujo de calibración (v0.4):**
+oF (Particles) → OSC → JUCE (Synthesis) → CALIB (Control + Registration) → Notebook (Analysis) → Report (HTML)
+
+CALIB se integra de forma **no invasiva**: escucha los mismos mensajes OSC que JUCE (puerto 9000) y puede enviar comandos de control (`/test/*`) para orquestar sesiones reproducibles.
 
 ---
 
@@ -400,9 +425,109 @@ Textura de múltiples hits percusivos metálicos breves que se acumulan en una c
 
 ---
 
-## 6. Calibración y parámetros expuestos
+## 6. App C (MAAD-2-CALIB) — Especificación
 
-### 6.1 Parámetros en oF (UI simple)
+### 6.1 Propósito
+
+MAAD-2-CALIB es un módulo de calibración y validación diseñado como trabajo final integrador de **Matemática Aplicada al Arte Digital II (MAAD-2)**. Proporciona herramientas para:
+
+* **Calibración reproducible**: Sesiones de prueba con semillas y parámetros controlados
+* **Análisis científico**: Validación de comportamiento del sistema mediante técnicas de procesamiento de señales
+* **Documentación técnica**: Registro estructurado de sesiones para análisis posterior
+
+### 6.2 Arquitectura e Integración
+
+CALIB se integra de forma **no invasiva** con el sistema existente:
+
+* **Mismo puerto OSC (9000)**: Escucha los mismos mensajes que JUCE (`/hit`, `/state`, `/plate`)
+* **No interfiere**: La comunicación oF ↔ JUCE continúa funcionando normalmente
+* **Modos de operación**:
+  * **Modo pasivo (escucha)**: CALIB solo escucha eventos sin enviar comandos
+  * **Modo activo (orquestación)**: CALIB envía comandos `/test/*` para controlar sesiones
+  * **Modo análisis**: Solo procesa datos existentes sin captura
+
+### 6.3 Contrato OSC de Control
+
+CALIB actúa como **cliente OSC** que envía comandos de control a las aplicaciones existentes:
+
+#### 6.3.1 Mensajes de control
+
+**`/test/start`** — Iniciar sesión de calibración
+* Sin argumentos
+* Efecto: oF y JUCE registran timestamp de inicio, posiblemente resetean estado
+
+**`/test/stop`** — Detener sesión
+* Sin argumentos
+* Efecto: oF y JUCE finalizan registro, CALIB genera `meta.json`
+
+**`/test/seek`** — Control de posición temporal (opcional)
+* Args: `float time` (segundos)
+* Efecto: Reposicionar en timeline de sesión (si aplica)
+
+**`/test/rate`** — Control de velocidad de reproducción (opcional)
+* Args: `float rate` (1.0 = normal, 0.5 = mitad, 2.0 = doble)
+* Efecto: Modificar velocidad de simulación (si aplica)
+
+**`/test/seed`** — Establecer semilla para reproducibilidad
+* Args: `int32 seed`
+* Efecto: oF establece semilla aleatoria para simulación reproducible
+
+**`/test/beep`** — Señal de prueba/calibración
+* Sin argumentos
+* Efecto: JUCE genera señal de prueba audible
+
+### 6.4 Registro de Datos
+
+Cada sesión genera un directorio con timestamp: `runs/YYYYMMDD_HHMMSS/`
+
+**Estructura de artefactos**:
+
+* `run.ndjson` — Eventos OSC registrados línea por línea (formato NDJSON)
+  * Cada línea: `{"timestamp": 0.123, "osc_address": "/hit", "osc_args": [...], "wall_clock": "2026-02-11T10:30:45"}`
+* `audio.wav` — Audio capturado completo de la sesión
+* `meta.json` — Metadatos de sesión:
+  * Timestamp de inicio/fin
+  * Parámetros de configuración (oF, JUCE)
+  * Semilla utilizada
+  * Versión del sistema
+* `metrics.json` — Métricas calculadas (generado por notebook)
+* `report.html` — Reporte de análisis (generado por notebook)
+
+### 6.5 Análisis Offline
+
+El análisis se realiza en notebooks Jupyter (`maad-2-calib/notebooks/`) con técnicas de procesamiento digital de señales:
+
+* **Análisis espectral**: DFT, STFT con diferentes ventanas
+* **Análisis de sistemas**: Respuesta en frecuencia, función de transferencia
+* **Convolución y filtrado**: Filtros FIR/IIR
+* **Métricas temporales**: Energía, promedio, envolventes
+* **Validación estadística**: Reproducibilidad, distribuciones
+* **Validación de coherencia**: Correlación entre eventos OSC y eventos sonoros
+* **Generación de reportes**: HTML con visualizaciones
+
+### 6.6 Alineación Académica
+
+Este módulo está diseñado para cumplir con los requisitos del **Trabajo Final Integrador de MAAD-2**, modalidad 2 (Herramienta propia).
+
+**Temas del curso cubiertos**:
+* Transformada Discreta de Fourier (DFT)
+* Transformada de Fourier de Tiempo Corto (STFT)
+* Transformada Z
+* Convolución discreta
+* Sistemas LTI (lineales e invariantes en el tiempo)
+* Función de transferencia, respuesta al impulso y en frecuencia
+* Filtros FIR e IIR
+* Cálculo de energía y promedio de señales
+* Análisis de variaciones en señales y envolventes
+* Ecuaciones diferenciales lineales y sistemas resonantes
+
+Para detalles completos, ver [`../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md`](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md).
+
+---
+
+## 7. Calibración y parámetros expuestos
+
+### 7.1 Parámetros en oF (UI simple)
 
 * `N_particles` (500–8000)
 * `k_home`
@@ -413,7 +538,7 @@ Textura de múltiples hits percusivos metálicos breves que se acumulan en una c
 * `hit_threshold`
 * `hit_cooldown_ms`
 
-### 6.2 Parámetros en JUCE (UI simple)
+### 7.2 Parámetros en JUCE (UI simple)
 
 * `Voices`
 * `Metalness` (inharmonic spread)
@@ -425,21 +550,21 @@ Textura de múltiples hits percusivos metálicos breves que se acumulan en una c
 
 ---
 
-## 7. Modos de demo
+## 8. Modos de demo
 
-### 7.1 Demo A (interacción básica)
+### 8.1 Demo A (interacción básica)
 
 * usuario quieto → partículas en home, casi sin hits
 * gesto de manos → desplazamiento + hits en bordes → sonido metálico
 
-### 7.2 Demo B (instrumento)
+### 8.2 Demo B (instrumento)
 
 * jugar con velocidad del gesto:
 
   * lento: pocos hits, sonido espacioso
   * rápido: muchos hits, textura granular metálica
 
-### 7.3 Demo C (sin webcam)
+### 8.3 Demo C (sin webcam)
 
 * fallback: mouse como efector (para presentar si falla MediaPipe)
 
@@ -449,29 +574,29 @@ Textura de múltiples hits percusivos metálicos breves que se acumulan en una c
 
 ---
 
-## 8. Testing mínimo
+## 9. Testing mínimo
 
-### 8.1 oF
+### 9.1 oF
 
 * Test de estabilidad FPS con N=2000/5000
 * Contador de hits/seg
 * Validación de cooldown (no > X hits por partícula por segundo)
 
-### 8.2 JUCE
+### 9.2 JUCE
 
 * Test de estrés: recibir 200 hits/s sin glitch
 * Test de voice stealing
 * Test de limiter
 
-### 8.3 Integración
+### 9.3 Integración
 
 * Script (opcional) que emita OSC `/hit` falso para probar JUCE sin oF.
 
 ---
 
-## 9. Entregables (lo que se presenta)
+## 10. Entregables (lo que se presenta)
 
-### 9.1 ISTR
+### 10.1 ISTR
 
 * Código oF + demo video
 * explicación: tracking → fuerzas → partículas → eventos
@@ -482,13 +607,22 @@ Textura de múltiples hits percusivos metálicos breves que se acumulan en una c
 * standalone o plugin + preset “metal particles”
 * explicación: OSC → voices → resonador → master limiter
 
-### 9.3 Bonus (si da el tiempo)
+### 10.3 Bonus (si da el tiempo)
 
 * captura integrada (pantalla + audio) como performance de 60–90s
 
 ---
 
-## 10. Roadmap (orden recomendado)
+### 10.4 MAAD-2 (App C - CALIB)
+
+* Módulo CALIB funcionando (CONTROL + REGISTRATION)
+* Notebook de análisis completo con validación de coherencia
+* Reportes HTML con visualizaciones
+* Explicación: simulación → síntesis → validación científica
+
+---
+
+## 11. Roadmap (orden recomendado)
 
 1. oF: partículas + retorno + gesto (sin OSC)
 2. oF: colisiones + eventos (log)
@@ -497,5 +631,8 @@ Textura de múltiples hits percusivos metálicos breves que se acumulan en una c
 5. JUCE: receptor OSC y mapping
 6. calibración conjunta
 7. demo + fallback mouse
+8. CALIB: modo test en apps (receptores `/test/*`)
+9. CALIB: CONTROL y REGISTRATION
+10. CALIB: notebook de análisis completo
 
 ---

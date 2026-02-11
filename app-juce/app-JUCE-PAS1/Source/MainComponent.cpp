@@ -5,9 +5,11 @@
 MainComponent::MainComponent()
     : pitchRandomGen(std::random_device{}()), pitchRandomDist(0.0f, 1.0f)
 {
-    // Configurar sliders y labels (solo controles que funcionan)
+    // Configurar sliders y labels
     setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
-    setupSlider(metalnessSlider, metalnessLabel, "Pitch", 0.0, 1.0, 0.5);
+    setupSlider(metalnessSlider, metalnessLabel, "Metalness", 0.0, 1.0, 0.5); // Dispersión de modos inarmónicos
+    setupSlider(brightnessSlider, brightnessLabel, "Brightness", 0.0, 1.0, 0.5); // Tilt espectral (0=oscuro, 1=brillante)
+    setupSlider(dampingSlider, dampingLabel, "Damping", 0.0, 1.0, 0.5); // Tiempo de decaimiento (0=corto, 1=largo)
     setupSlider(subOscMixSlider, subOscMixLabel, "SubOsc Mix", 0.0, 1.0, 0.0);
     setupSlider(pitchRangeSlider, pitchRangeLabel, "Pitch Range", 0.0, 1.0, 0.5); // Rango de variación de pitch random (0=sin variación, 1=máxima variación)
     setupSlider(plateVolumeSlider, plateVolumeLabel, "Plate Volume", 0.0, 1.0, 1.0);
@@ -52,6 +54,14 @@ MainComponent::MainComponent()
     activeVoicesLabel.setText("Active Voices: 0", juce::dontSendNotification);
     activeVoicesLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(&activeVoicesLabel);
+    
+    hitsCoverageLabel.setText("Hit Coverage: 100%", juce::dontSendNotification);
+    hitsCoverageLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&hitsCoverageLabel);
+    
+    hitsStatsLabel.setText("Hits: 0/0 (0 discarded)", juce::dontSendNotification);
+    hitsStatsLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&hitsStatsLabel);
     
     // OSC Receiver setup
     oscStatusLabel.setText("OSC: Disconnected", juce::dontSendNotification);
@@ -117,6 +127,9 @@ void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRat
     // This function will be called when the audio device is started, or when
     // its settings (i.e. sample rate, block size, etc) are changed.
 
+    // Guardar sample rate para grabación y beeps
+    currentSampleRate = sampleRate;
+    
     // Preparar el motor de síntesis
     synthesisEngine.prepare(sampleRate);
     
@@ -132,12 +145,44 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
     // Limpiar el buffer primero
     bufferToFill.clearActiveBufferRegion();
     
+    // Reproducir beep si está activo (v0.4)
+    if (isPlayingBeep && beepBuffer.getNumSamples() > 0)
+    {
+        int numSamples = bufferToFill.numSamples;
+        int beepSamplesRemaining = beepBuffer.getNumSamples() - beepPosition;
+        int samplesToCopy = juce::jmin(numSamples, beepSamplesRemaining);
+        
+        if (samplesToCopy > 0 && bufferToFill.buffer != nullptr)
+        {
+            int numChannels = juce::jmin(bufferToFill.buffer->getNumChannels(), beepBuffer.getNumChannels());
+            for (int channel = 0; channel < numChannels; channel++)
+            {
+                bufferToFill.buffer->addFrom(channel, bufferToFill.startSample,
+                                            beepBuffer, channel, beepPosition, samplesToCopy);
+            }
+            
+            beepPosition += samplesToCopy;
+            
+            if (beepPosition >= beepBuffer.getNumSamples())
+            {
+                isPlayingBeep = false;
+                beepPosition = 0;
+            }
+        }
+    }
+    
     // Renderizar el motor de síntesis
     if (bufferToFill.buffer != nullptr)
     {
         synthesisEngine.renderNextBlock(*bufferToFill.buffer, 
                                          bufferToFill.startSample, 
                                          bufferToFill.numSamples);
+    }
+    
+    // Grabar audio si está en modo test (v0.4)
+    if (isRecording)
+    {
+        writeAudioBlock(bufferToFill);
     }
 }
 
@@ -186,6 +231,14 @@ void MainComponent::resized()
     metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
     metalnessSlider.setBounds(metalnessArea);
     
+    auto brightnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    brightnessLabel.setBounds(brightnessArea.removeFromLeft(labelWidth));
+    brightnessSlider.setBounds(brightnessArea);
+    
+    auto dampingArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
+    dampingSlider.setBounds(dampingArea);
+    
     // Waveform combo box
     auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
@@ -219,6 +272,8 @@ void MainComponent::resized()
     auto bottomArea = area;
     outputLevelLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
     activeVoicesLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
+    hitsCoverageLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
+    hitsStatsLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
     oscStatusLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
     oscMessageCountLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
 }
@@ -233,6 +288,14 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     else if (slider == &metalnessSlider)
     {
         synthesisEngine.setMetalness((float)metalnessSlider.getValue());
+    }
+    else if (slider == &brightnessSlider)
+    {
+        synthesisEngine.setBrightness((float)brightnessSlider.getValue());
+    }
+    else if (slider == &dampingSlider)
+    {
+        synthesisEngine.setDamping((float)dampingSlider.getValue());
     }
     else if (slider == &subOscMixSlider)
     {
@@ -316,6 +379,36 @@ void MainComponent::timerCallback()
     activeVoicesLabel.setText("Active Voices: " + juce::String(activeVoices), 
                              juce::dontSendNotification);
     
+    // Actualizar estadísticas de hits
+    int hitsReceived = synthesisEngine.getHitsReceived();
+    int hitsTriggered = synthesisEngine.getHitsTriggered();
+    int hitsDiscarded = synthesisEngine.getHitsDiscarded();
+    float coverageRatio = synthesisEngine.getHitCoverageRatio();
+    
+    hitsStatsLabel.setText("Hits: " + juce::String(hitsTriggered) + "/" + 
+                          juce::String(hitsReceived) + " (" + 
+                          juce::String(hitsDiscarded) + " discarded)", 
+                          juce::dontSendNotification);
+    
+    // Mostrar ratio de cobertura con color según umbral
+    float coveragePercent = coverageRatio * 100.0f;
+    juce::String coverageText = "Hit Coverage: " + juce::String(coveragePercent, 1) + "%";
+    hitsCoverageLabel.setText(coverageText, juce::dontSendNotification);
+    
+    // Cambiar color según umbral (warning si < 90%)
+    if (coverageRatio < 0.9f && hitsReceived > 10) // Solo mostrar warning si hay suficientes hits
+    {
+        hitsCoverageLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
+    }
+    else if (coverageRatio < 0.7f && hitsReceived > 10)
+    {
+        hitsCoverageLabel.setColour(juce::Label::textColourId, juce::Colours::red);
+    }
+    else
+    {
+        hitsCoverageLabel.setColour(juce::Label::textColourId, juce::Colours::green);
+    }
+    
     // Update OSC indicators (messages are now processed via listener callback)
     juce::int64 currentTime = juce::Time::currentTimeMillis();
     if (currentTime - lastOscCountUpdateTime >= 1000) // Update every second
@@ -380,6 +473,22 @@ void MainComponent::oscMessageReceived(const juce::OSCMessage& message)
     else if (address == "/plate")
     {
         mapOSCPlateToEvent(message);
+    }
+    else if (address == "/test/start")
+    {
+        handleTestStart(message);
+    }
+    else if (address == "/test/stop")
+    {
+        handleTestStop(message);
+    }
+    else if (address == "/test/seed")
+    {
+        handleTestSeed(message);
+    }
+    else if (address == "/test/beep")
+    {
+        handleTestBeep(message);
     }
     // Silently ignore unknown addresses (no crash, no log spam)
 }
@@ -519,4 +628,224 @@ void MainComponent::mapOSCPlateToEvent(const juce::OSCMessage& message)
     
     // Trigger plate synth through RT-safe method (to be implemented in SynthesisEngine)
     synthesisEngine.triggerPlateFromOSC(freq, amp, mode);
+}
+
+//==============================================================================
+// Modo test handlers (v0.4)
+//==============================================================================
+void MainComponent::handleTestStart(const juce::OSCMessage& message)
+{
+    testModeActive = true;
+    
+    // Resetear voces, colas y contadores
+    synthesisEngine.reset();
+    
+    // Obtener run_id si está presente
+    if (message.size() > 0 && message[0].isString())
+    {
+        testRunId = message[0].getString().toStdString();
+    }
+    else
+    {
+        testRunId = "";
+    }
+    
+    // Iniciar grabación de audio
+    startAudioRecording(juce::String(testRunId));
+    
+    juce::Logger::writeToLog("Modo test iniciado: run_id=" + juce::String(testRunId));
+}
+
+//==============================================================================
+void MainComponent::handleTestStop(const juce::OSCMessage& message)
+{
+    // Detener grabación de audio
+    stopAudioRecording();
+    
+    testModeActive = false;
+    testRunId = "";
+    
+    juce::Logger::writeToLog("Modo test detenido");
+}
+
+//==============================================================================
+void MainComponent::handleTestSeed(const juce::OSCMessage& message)
+{
+    if (message.size() > 0 && message[0].isInt32())
+    {
+        testSeed = message[0].getInt32();
+        
+        // Establecer semilla en generadores pseudoaleatorios
+        pitchRandomGen.seed(testSeed);
+        
+        // Nota: También se puede propagar a SynthesisEngine si tiene PRNGs internos
+        // Por ahora, solo establecemos la semilla del pitchRandomGen
+        
+        juce::Logger::writeToLog("Semilla establecida: " + juce::String(testSeed));
+    }
+}
+
+//==============================================================================
+void MainComponent::handleTestBeep(const juce::OSCMessage& message)
+{
+    if (message.size() > 0 && message[0].isString())
+    {
+        juce::String type = message[0].getString();
+        generateBeep(type);
+    }
+}
+
+//==============================================================================
+// Grabación de audio (v0.4)
+//==============================================================================
+void MainComponent::startAudioRecording(const juce::String& runId)
+{
+    if (isRecording)
+    {
+        stopAudioRecording();
+    }
+    
+    // Construir ruta: runs/<run_id>/audio.wav
+    juce::File runsDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                         .getChildFile("UNA")
+                         .getChildFile("POSGRADO")
+                         .getChildFile("2025_2")
+                         .getChildFile("Sistema Modular Audiovisual")
+                         .getChildFile("maad-2-calib")
+                         .getChildFile("runs");
+    
+    if (!runsDir.exists())
+    {
+        runsDir.createDirectory();
+    }
+    
+    juce::File runDir = runsDir.getChildFile(runId);
+    if (!runDir.exists())
+    {
+        runDir.createDirectory();
+    }
+    
+    juce::File audioFile = runDir.getChildFile("audio.wav");
+    
+    // Configurar formato de audio (WAV, 16-bit, estéreo)
+    audioFormatManager.registerBasicFormats();
+    auto* format = audioFormatManager.findFormatForFileExtension("wav");
+    
+    if (format != nullptr)
+    {
+        audioFileStream = std::make_unique<juce::FileOutputStream>(audioFile);
+        
+        if (audioFileStream->openedOk())
+        {
+            juce::WavAudioFormat wavFormat;
+            auto* writer = wavFormat.createWriterFor(audioFileStream.get(), 
+                                                      currentSampleRate, 
+                                                      2, // estéreo
+                                                      16, // 16-bit
+                                                      {}, 
+                                                      0);
+            
+            if (writer != nullptr)
+            {
+                audioWriter.reset(writer);
+                isRecording = true;
+                
+                // Pre-allocar buffer de grabación (2 canales, tamaño razonable)
+                recordingBuffer.setSize(2, 512);
+                
+                juce::Logger::writeToLog("Grabación iniciada: " + audioFile.getFullPathName());
+            }
+        }
+    }
+}
+
+//==============================================================================
+void MainComponent::stopAudioRecording()
+{
+    if (isRecording && audioWriter != nullptr)
+    {
+        audioWriter->flush();
+        audioWriter.reset();
+        audioFileStream.reset();
+        isRecording = false;
+        
+        juce::Logger::writeToLog("Grabación detenida");
+    }
+}
+
+//==============================================================================
+void MainComponent::writeAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
+{
+    if (isRecording && audioWriter != nullptr)
+    {
+        // Copiar datos del buffer de audio al buffer de grabación
+        int numSamples = bufferToFill.numSamples;
+        int numChannels = juce::jmin(bufferToFill.buffer->getNumChannels(), 2);
+        
+        if (recordingBuffer.getNumSamples() < numSamples)
+        {
+            recordingBuffer.setSize(numChannels, numSamples, false, false, true);
+        }
+        
+        for (int channel = 0; channel < numChannels; channel++)
+        {
+            recordingBuffer.copyFrom(channel, 0, 
+                                    *bufferToFill.buffer, 
+                                    channel, 
+                                    bufferToFill.startSample, 
+                                    numSamples);
+        }
+        
+        // Escribir al archivo
+        audioWriter->writeFromAudioSampleBuffer(recordingBuffer, 0, numSamples);
+    }
+}
+
+//==============================================================================
+// Generación de beeps deterministas (v0.4)
+//==============================================================================
+void MainComponent::generateBeep(const juce::String& type)
+{
+    // Parámetros deterministas para beeps
+    float freq = 1000.0f; // 1 kHz
+    float duration = 0.1f; // 100ms
+    float amplitude = 0.8f;
+    
+    if (type == "OUT")
+    {
+        freq = 800.0f; // Frecuencia ligeramente más baja para OUT
+    }
+    
+    int numSamples = (int)(duration * currentSampleRate);
+    beepBuffer.setSize(2, numSamples, false, false, true);
+    beepBuffer.clear();
+    
+    // Generar tono sinusoidal
+    const float twoPi = 2.0f * juce::MathConstants<float>::pi;
+    for (int sample = 0; sample < numSamples; sample++)
+    {
+        float phase = (float)sample / (float)currentSampleRate * freq * twoPi;
+        float value = std::sin(phase) * amplitude;
+        
+        // Aplicar envolvente suave (fade in/out)
+        float env = 1.0f;
+        if (sample < numSamples / 10)
+        {
+            env = (float)sample / (float)(numSamples / 10); // Fade in
+        }
+        else if (sample > numSamples * 9 / 10)
+        {
+            env = 1.0f - ((float)(sample - numSamples * 9 / 10) / (float)(numSamples / 10)); // Fade out
+        }
+        
+        value *= env;
+        
+        beepBuffer.setSample(0, sample, value);
+        beepBuffer.setSample(1, sample, value);
+    }
+    
+    beepPosition = 0;
+    isPlayingBeep = true;
+    
+    juce::Logger::writeToLog("Beep generado: " + type);
 }

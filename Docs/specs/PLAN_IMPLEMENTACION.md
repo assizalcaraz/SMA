@@ -857,6 +857,167 @@ Este orden permite validar el sistema completo antes de invertir tiempo en Media
 
 ---
 
+## Fase 10: App C — MAAD-2-CALIB (Módulo de Calibración y Validación)
+
+**Objetivo:** Implementar módulo de calibración y validación para sesiones reproducibles y análisis científico.
+
+**Referencia:** `spec.md` sección 6 y `Docs/CALIB/README.md`
+
+**Estado:** ✅ Scaffolding completado (documentación + estructura, código placeholder)
+
+### Tareas
+
+#### 10.1 Modo Test en Apps (oF y JUCE)
+
+**Objetivo:** Implementar receptores OSC para comandos `/test/*` en ambas apps para permitir orquestación desde CALIB.
+
+**oF (Particles):**
+- [ ] Implementar receptor OSC para comandos `/test/*`:
+  - [ ] `/test/start` — Iniciar modo test (registrar timestamp, posiblemente resetear estado)
+  - [ ] `/test/stop` — Detener modo test
+  - [ ] `/test/seed` — Establecer semilla para reproducibilidad (int32 seed)
+- [ ] Sincronización temporal:
+  - [ ] Registrar timestamp de inicio cuando se recibe `/test/start`
+  - [ ] Registrar timestamp de fin cuando se recibe `/test/stop`
+  - [ ] Usar wall clock para sincronización con CALIB
+
+**JUCE:**
+- [ ] Implementar receptor OSC para comandos `/test/*`:
+  - [ ] `/test/start` — Iniciar modo test (resetear voces, limpiar buffers)
+  - [ ] `/test/stop` — Detener modo test
+  - [ ] `/test/beep` — Señal de prueba/calibración (generar tono de prueba)
+- [ ] Sincronización temporal:
+  - [ ] Registrar timestamp de inicio cuando se recibe `/test/start`
+  - [ ] Registrar timestamp de fin cuando se recibe `/test/stop`
+  - [ ] Usar wall clock para sincronización con CALIB
+
+**Testing:**
+- [ ] Verificar que ambas apps responden a comandos `/test/*`
+- [ ] Validar sincronización temporal entre apps
+- [ ] Probar con CALIB enviando comandos
+
+#### 10.2 CONTROL — Orquestación OSC
+
+**Objetivo:** Implementar lógica de CONTROL en CALIB para orquestar sesiones de calibración.
+
+- [ ] Implementar cliente OSC en CALIB:
+  - [ ] Inicializar `OSCSender` (o librería equivalente)
+  - [ ] Configurar host destino (`127.0.0.1` por defecto)
+  - [ ] Configurar puerto (`9000` por defecto)
+- [ ] Implementar comandos de control:
+  - [ ] `/test/start` — Enviar a oF y JUCE simultáneamente
+  - [ ] `/test/stop` — Enviar a oF y JUCE simultáneamente
+  - [ ] `/test/seed` — Enviar semilla a oF
+  - [ ] `/test/beep` — Enviar señal de prueba a JUCE
+  - [ ] `/test/seek` — Control de posición temporal (opcional)
+  - [ ] `/test/rate` — Control de velocidad de reproducción (opcional)
+- [ ] UI o CLI para control:
+  - [ ] Botones/comandos para iniciar/detener sesión
+  - [ ] Configuración de semilla
+  - [ ] Indicadores de estado de sesión
+
+#### 10.3 REGISTRATION — Captura de Datos
+
+**Objetivo:** Implementar lógica de REGISTRATION en CALIB para capturar y registrar datos estructurados.
+
+- [ ] Implementar servidor OSC en CALIB:
+  - [ ] Inicializar `OSCReceiver` en puerto 9000
+  - [ ] Callbacks para mensajes `/hit`, `/state`, `/plate`
+  - [ ] Validación de formato de mensajes
+- [ ] Captura de eventos OSC:
+  - [ ] Registrar cada evento en formato NDJSON (`run.ndjson`)
+  - [ ] Timestamp relativo (desde inicio de sesión)
+  - [ ] Timestamp absoluto (wall clock ISO 8601)
+  - [ ] Serialización correcta de argumentos OSC
+- [ ] Captura de audio:
+  - [ ] Inicializar captura de audio (PortAudio, RtAudio, o similar)
+  - [ ] Capturar audio durante sesión activa
+  - [ ] Guardar como `audio.wav` al finalizar sesión
+- [ ] Generación de metadata:
+  - [ ] Crear `meta.json` con:
+    - Timestamp de inicio/fin
+    - Parámetros de configuración (si disponibles)
+    - Semilla utilizada
+    - Versión del sistema
+- [ ] Gestión de directorios:
+  - [ ] Crear directorio `runs/YYYYMMDD_HHMMSS/` por sesión
+  - [ ] Manejo de errores de escritura
+  - [ ] Validación de espacio en disco
+
+#### 10.4 ANALYSIS — Notebook de Análisis
+
+**Objetivo:** Implementar notebook Jupyter completo para análisis científico y validación de coherencia.
+
+**Estructura del notebook** (CRÍTICO para demostrar coherencia simulación ↔ síntesis):
+
+1. **Carga de datos**:
+   - [ ] Leer `run.ndjson` y parsear eventos OSC
+   - [ ] Leer `audio.wav` con librosa
+   - [ ] Leer `meta.json` para contexto
+
+2. **Análisis de eventos OSC**:
+   - [ ] Distribución temporal de hits (histograma)
+   - [ ] Energía por hit (distribución, estadísticas)
+   - [ ] Superficies impactadas (conteo por superficie)
+   - [ ] Tasa de hits por segundo (actividad temporal)
+
+3. **Análisis espectral del audio**:
+   - [ ] STFT del audio capturado
+   - [ ] Identificación de modos resonantes (picos espectrales)
+   - [ ] Comparación con modos esperados (según parámetros JUCE)
+   - [ ] Análisis de envolvente temporal
+
+4. **Validación de coherencia** (CRÍTICO):
+   - [ ] Correlación entre eventos OSC y eventos sonoros:
+     - Detectar eventos sonoros en audio (onset detection)
+     - Alinear eventos OSC con eventos sonoros
+     - Calcular latencia (tiempo entre hit y sonido)
+   - [ ] Verificar que todos los hits generen sonido:
+     - Contar hits OSC vs. eventos sonoros detectados
+     - Identificar hits que no generaron sonido (si los hay)
+     - Analizar causas (voice stealing, rate limiting, etc.)
+   - [ ] Análisis de energía:
+     - Correlación entre energía OSC y amplitud de audio
+     - Validar mapeo energía → amplitud
+
+5. **Métricas de reproducibilidad**:
+   - [ ] Comparar múltiples runs con misma semilla
+   - [ ] Validar consistencia de resultados
+   - [ ] Análisis estadístico de variabilidad
+
+6. **Visualizaciones**:
+   - [ ] Gráfico de eventos OSC vs. audio (timeline)
+   - [ ] Espectrogramas (STFT)
+   - [ ] Distribuciones de energía
+   - [ ] Métricas de coherencia (gráficos de correlación)
+   - [ ] Comparación de runs (si hay múltiples)
+
+7. **Generación de reporte HTML**:
+   - [ ] Exportar visualizaciones a HTML
+   - [ ] Incluir métricas calculadas
+   - [ ] Conclusiones sobre coherencia simulación ↔ síntesis
+
+### Entregables
+
+- ✅ Documentación completa (README, CALIB_SPEC, ACADEMIC_ALIGNMENT)
+- ✅ Estructura de directorios y placeholders
+- [ ] Modo test funcionando en oF y JUCE
+- [ ] CONTROL implementado (orquestación OSC)
+- [ ] REGISTRATION implementado (captura NDJSON + WAV)
+- [ ] Notebook de análisis completo con validación de coherencia
+- [ ] Reportes HTML generados automáticamente
+
+### Definition of Done (DoD)
+
+- [ ] CALIB puede iniciar/detener sesiones en oF y JUCE simultáneamente
+- [ ] CALIB captura eventos OSC y audio correctamente
+- [ ] Datos se guardan en formato estructurado (`runs/YYYYMMDD_HHMMSS/`)
+- [ ] Notebook puede analizar datos y generar reportes
+- [ ] Notebook demuestra coherencia entre simulación y síntesis
+- [ ] Reportes HTML incluyen visualizaciones y métricas
+
+---
+
 ## Estado actual
 
 - [x] Fase 1: Setup inicial — Estructura creada
@@ -865,12 +1026,14 @@ Este orden permite validar el sistema completo antes de invertir tiempo en Media
 - [x] Fase 4: Colisiones y eventos (+ rate limiting)
 - [x] Fase 5: Comunicación OSC (adelantada)
 - [x] Fase 6: Sintetizador básico (JUCE Standalone) — **COMPLETADA**
-- [ ] Fase 7: Receptor OSC y mapeo
+- [x] Fase 7: Receptor OSC y mapeo — **COMPLETADA**
+- [x] Fase 8: Sistema Plate paralelo — **COMPLETADA**
 - [ ] Fase 3b: Integración MediaPipe (opcional/tardía)
-- [ ] Fase 8: Calibración y ajuste conjunto
-- [ ] Fase 9: Documentación y demo
+- [ ] Fase 9: Calibración y ajuste conjunto
+- [ ] Fase 10: App C — MAAD-2-CALIB — **Scaffolding completado**
+- [ ] Fase 11: Documentación y demo
 
 ---
 
-**Última actualización:** Febrero 2025  
-**Versión:** 2.1 (Fase 6 completada - Sintetizador JUCE básico)
+**Última actualización:** Febrero 2026  
+**Versión:** 2.2 (Fase 10 agregada - CALIB scaffolding completado)

@@ -40,6 +40,8 @@ public:
     /** Parámetros globales (thread-safe usando atomic) */
     void setMaxVoices(int maxVoices);
     void setMetalness(float metalness);
+    void setBrightness(float brightness);
+    void setDamping(float damping);
     void setWaveform(ModalVoice::ExcitationWaveform waveform);
     void setSubOscMix(float subOscMix);
     void setPitchRange(float pitchRange);
@@ -49,6 +51,8 @@ public:
     /** Obtiene parámetros actuales */
     int getMaxVoices() const;
     float getMetalness() const;
+    float getBrightness() const;
+    float getDamping() const;
     ModalVoice::ExcitationWaveform getWaveform() const;
     float getSubOscMix() const;
     float getPitchRange() const;
@@ -74,6 +78,12 @@ public:
     /** Obtiene el nivel RMS de salida (para UI) */
     float getOutputLevel() const;
 
+    /** Obtiene estadísticas de hits (thread-safe) */
+    int getHitsReceived() const;
+    int getHitsTriggered() const;
+    int getHitsDiscarded() const;
+    float getHitCoverageRatio() const; // hits_triggered / hits_received
+
     /** Resetea el motor completamente */
     void reset();
 
@@ -91,6 +101,8 @@ private:
     // Parámetros globales (atomic para thread safety)
     std::atomic<int> maxVoices{8}; // Reducido a 8 por defecto para estabilidad RT
     std::atomic<float> metalness{0.5f};
+    std::atomic<float> brightness{0.5f}; // Brightness global (0.0 = oscuro, 1.0 = brillante)
+    std::atomic<float> damping{0.5f}; // Damping global (0.0 = corto, 1.0 = largo)
     std::atomic<int> waveform{0}; // ExcitationWaveform como int (enum class no es directamente atomic)
     std::atomic<float> subOscMix{0.0f};
     std::atomic<float> pitchRange{0.5f}; // Rango de variación de pitch random (0.0-1.0)
@@ -113,12 +125,19 @@ private:
     float outputLevel = 0.0f;
     float outputLevelDecay = 0.999f; // Decay para RMS
     
+    // Contadores de hits (thread-safe usando atomic)
+    std::atomic<int> hitsReceived{0};
+    std::atomic<int> hitsTriggered{0};
+    std::atomic<int> hitsDiscarded{0};
+    
     // Buffer temporal para plate (RT-safe: pre-allocado, tamaño máximo)
     static constexpr int MAX_BLOCK_SIZE = 2048; // Tamaño máximo de bloque esperado
     juce::AudioBuffer<float> plateBuffer;
     
     // Parámetros previos para detectar cambios (RT-safe: solo lectura desde audio thread)
     float prevMetalness = 0.5f;
+    float prevBrightness = 0.5f;
+    float prevDamping = 0.5f;
     int parameterUpdateCounter = 0; // Contador para actualizar periódicamente
     static constexpr int PARAMETER_UPDATE_INTERVAL = 4; // Actualizar cada 4 bloques (~10ms a 44.1kHz/512)
     

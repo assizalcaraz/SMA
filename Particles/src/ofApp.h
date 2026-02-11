@@ -104,12 +104,21 @@ class ofApp : public ofBaseApp{
 		std::vector<HitEvent> validated_hits;  // Eventos validados (para futuro OSC)
 		
 		// OSC
-		ofxOscSender oscSender;
+		ofxOscSender oscSenderJUCE;           // Sender para JUCE (puerto 9000)
+		ofxOscSender oscSenderCALIB;          // Sender para CALIB (puerto 9100)
+		ofxOscReceiver oscReceiver;           // Receiver para comandos /test/* (puerto 9002)
 		std::string oscHost;                   // Host destino (default: 127.0.0.1)
-		int oscPort;                           // Puerto destino (default: 9000)
+		int oscPortJUCE;                       // Puerto destino JUCE (default: 9000)
+		int oscPortCALIB;                      // Puerto destino CALIB (default: 9100)
+		int oscPortControl;                    // Puerto receptor control (default: 9002)
 		bool oscEnabled;                       // Habilitar/deshabilitar OSC
 		float stateSendInterval;              // Intervalo para enviar /state (segundos)
 		float stateSendTimer;                 // Timer para /state
+		
+		// Modo test (v0.4)
+		bool testModeActive;                   // Si está en modo test
+		std::string testRunId;                 // ID de la sesión de test actual
+		int testSeed;                         // Semilla de reproducibilidad
 		
 		// GUI
 		ofxPanel gui;
@@ -178,6 +187,7 @@ class ofApp : public ofBaseApp{
 		void sendHitEvent(const HitEvent& event);
 		void sendStateMessage();
 		void sendPlateMessage();
+		void processOSCMessages();            // Procesar mensajes OSC recibidos (comandos /test/*)
 		float calculateActivity();            // Calcular actividad normalizada (0..1)
 		float calculateGesture();              // Calcular energía de gesto (0..1)
 		float calculatePresence();             // Calcular confianza tracking (0..1)

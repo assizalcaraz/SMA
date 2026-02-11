@@ -26,6 +26,8 @@ void SynthesisEngine::prepare(double sampleRate)
     
     // Inicializar valores previos de parámetros globales
     prevMetalness = metalness.load();
+    prevBrightness = brightness.load();
+    prevDamping = damping.load();
     parameterUpdateCounter = 0;
     
     // DIAGNOSTIC: For stability testing, use:
@@ -50,15 +52,23 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         
         // Leer parámetros globales (atomic, thread-safe)
         float currentMetalness = metalness.load();
+        float currentBrightness = brightness.load();
+        float currentDamping = damping.load();
         
-        // Actualizar solo si cambió (optimización)
-        if (std::abs(currentMetalness - prevMetalness) > 0.001f)
+        // Actualizar solo si cambió algún parámetro (optimización)
+        bool needsUpdate = (std::abs(currentMetalness - prevMetalness) > 0.001f) ||
+                          (std::abs(currentBrightness - prevBrightness) > 0.001f) ||
+                          (std::abs(currentDamping - prevDamping) > 0.001f);
+        
+        if (needsUpdate)
         {
-            // Usar valores fijos para brightness y damping (0.5 = medio)
-            voiceManager.updateGlobalParameters(currentMetalness, 0.5f, 0.5f);
+            // Actualizar parámetros globales en voces activas
+            voiceManager.updateGlobalParameters(currentMetalness, currentBrightness, currentDamping);
             
-            // Actualizar valor previo
+            // Actualizar valores previos
             prevMetalness = currentMetalness;
+            prevBrightness = currentBrightness;
+            prevDamping = currentDamping;
         }
     }
     
@@ -140,6 +150,16 @@ void SynthesisEngine::setMetalness(float newMetalness)
     metalness.store(juce::jlimit(0.0f, 1.0f, newMetalness));
 }
 
+void SynthesisEngine::setBrightness(float newBrightness)
+{
+    brightness.store(juce::jlimit(0.0f, 1.0f, newBrightness));
+}
+
+void SynthesisEngine::setDamping(float newDamping)
+{
+    damping.store(juce::jlimit(0.0f, 1.0f, newDamping));
+}
+
 void SynthesisEngine::setWaveform(ModalVoice::ExcitationWaveform newWaveform)
 {
     waveform.store(static_cast<int>(newWaveform));
@@ -174,6 +194,16 @@ int SynthesisEngine::getMaxVoices() const
 float SynthesisEngine::getMetalness() const
 {
     return metalness.load();
+}
+
+float SynthesisEngine::getBrightness() const
+{
+    return brightness.load();
+}
+
+float SynthesisEngine::getDamping() const
+{
+    return damping.load();
 }
 
 ModalVoice::ExcitationWaveform SynthesisEngine::getWaveform() const
@@ -232,6 +262,9 @@ void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude,
                                          ModalVoice::ExcitationWaveform waveform,
                                          float subOscMix)
 {
+    // Incrementar contador de hits recibidos
+    hitsReceived++;
+    
     // RT-SAFE: Escribir evento a cola lock-free (mismo path que triggerTestVoice)
     // El audio thread procesará el evento en el próximo renderNextBlock()
     HitEvent event;
@@ -251,7 +284,11 @@ void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude,
         eventQueue[start1] = event;
         eventFifo.finishedWrite(size1);
     }
-    // Si la cola está llena, el evento se descarta silenciosamente (protección contra overflow)
+    else
+    {
+        // Cola llena - evento descartado
+        hitsDiscarded++;
+    }
 }
 
 //==============================================================================
@@ -272,6 +309,35 @@ void SynthesisEngine::reset()
     voiceManager.resetAll();
     plateSynth.reset();
     outputLevel = 0.0f;
+    hitsReceived.store(0);
+    hitsTriggered.store(0);
+    hitsDiscarded.store(0);
+}
+
+//==============================================================================
+int SynthesisEngine::getHitsReceived() const
+{
+    return hitsReceived.load();
+}
+
+int SynthesisEngine::getHitsTriggered() const
+{
+    return hitsTriggered.load();
+}
+
+int SynthesisEngine::getHitsDiscarded() const
+{
+    return hitsDiscarded.load();
+}
+
+float SynthesisEngine::getHitCoverageRatio() const
+{
+    int received = hitsReceived.load();
+    if (received == 0)
+        return 1.0f; // Sin hits recibidos = ratio perfecto
+    
+    int triggered = hitsTriggered.load();
+    return (float)triggered / (float)received;
 }
 
 //==============================================================================
@@ -325,6 +391,7 @@ void SynthesisEngine::processEventQueue()
         voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
                                    event.damping, event.brightness, event.metalness,
                                    event.waveform, event.subOscMix);
+        hitsTriggered++; // Incrementar contador de hits disparados
     }
     
     // Procesar segunda sección (si hay wraparound)
@@ -334,6 +401,7 @@ void SynthesisEngine::processEventQueue()
         voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
                                    event.damping, event.brightness, event.metalness,
                                    event.waveform, event.subOscMix);
+        hitsTriggered++; // Incrementar contador de hits disparados
     }
     
     eventFifo.finishedRead(size1 + size2);
