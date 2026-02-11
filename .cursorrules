@@ -28,5 +28,25 @@ El usuario usa: `git -M "mensaje"` (sin emoji, su autoría normal)
 - `dia start`: inicia sesión
 - `dia pre-feat`: sugiere commit (usa `git-commit-cursor`)
 - `dia end`: cierra sesión
-
 NO ejecutar commits automáticamente, solo sugerir.
+
+---
+
+## Rutas locales de desarrollo (Sistema Modular Audiovisual)
+
+> Nota: Estas rutas son solo de referencia para desarrollo local.  
+> La documentación pública debe usar rutas genéricas (`/ruta/a/...`, `/path/to/...`).
+
+```yaml
+sma_paths:
+  project_root: "/Users/joseassizalcarazbaxter/Documents/UNA/POSGRADO/2025_2/Sistema Modular Audiovisual"
+
+  # Apps del sistema
+  juce_app: "/Users/joseassizalcarazbaxter/Documents/UNA/POSGRADO/2025_2/Sistema Modular Audiovisual/app-juce/app-JUCE-PAS1"
+  of_particles_app: "/Users/joseassizalcarazbaxter/Documents/UNA/POSGRADO/2025_2/Sistema Modular Audiovisual/Particles"
+  maad_calib_app: "/Users/joseassizalcarazbaxter/Documents/UNA/POSGRADO/2025_2/Sistema Modular Audiovisual/maad-2-calib"
+
+  # Dependencias instaladas localmente
+  juce_modules: "/Applications/JUCE/modules"
+```
+

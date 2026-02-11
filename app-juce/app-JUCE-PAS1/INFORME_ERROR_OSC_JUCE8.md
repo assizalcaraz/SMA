@@ -21,7 +21,7 @@
 
 ### Error 1: Clase Abstracta
 ```
-/Users/.../Main.cpp:68:39 
+/path/to/project/Main.cpp:68:39 
 Allocating an object of abstract class type 'MainComponent'
 ```
 
@@ -34,7 +34,7 @@ auto* mainComponent = new MainComponent();
 
 ### Error 2: Método Override Incorrecto
 ```
-/Users/.../MainComponent.h:98:102 
+/path/to/project/MainComponent.h:98:102 
 Non-virtual member function marked 'override' hides virtual member function
 ```
 
@@ -109,7 +109,7 @@ La clase base puede requerir implementar métodos adicionales además de `oscMes
 ## Información de la API JUCE 8.0.12
 
 ### Módulo OSC
-- **Ubicación:** `/Applications/JUCE/modules/juce_osc/`
+- **Ubicación:** `/ruta/a/JUCE/modules/juce_osc/` (típicamente `/Applications/JUCE/modules/juce_osc/` en macOS)
 - **Versión:** 8.0.12
 - **Incluido en:** `JuceLibraryCode/JuceHeader.h` (después de regenerar)
 
@@ -215,7 +215,7 @@ void MainComponent::oscMessageReceived(const juce::OSCAddressPattern& pattern, c
 ## Verificación de API
 
 **Resultado de búsqueda en módulo OSC:**
-- ❌ `ListenerWithOSCAddress` NO existe en `/Applications/JUCE/modules/juce_osc/juce_osc.h`
+- ❌ `ListenerWithOSCAddress` NO existe en `/ruta/a/JUCE/modules/juce_osc/juce_osc.h`
 - ❌ No se encontraron clases `Listener` en el módulo
 - ❌ No se encontró `oscMessageReceived` como método virtual
 - ❌ No se encontró `addListener` con patrones de dirección
@@ -235,10 +235,10 @@ void MainComponent::oscMessageReceived(const juce::OSCAddressPattern& pattern, c
 
 Para verificar la API disponible:
 ```bash
-# Buscar definiciones en el módulo OSC
-grep -r "ListenerWithOSCAddress" /Applications/JUCE/modules/juce_osc/
-grep -r "oscMessageReceived" /Applications/JUCE/modules/juce_osc/
-grep -r "addListener" /Applications/JUCE/modules/juce_osc/
+# Buscar definiciones en el módulo OSC (reemplazar /ruta/a/JUCE con la ruta real de instalación)
+grep -r "ListenerWithOSCAddress" /ruta/a/JUCE/modules/juce_osc/
+grep -r "oscMessageReceived" /ruta/a/JUCE/modules/juce_osc/
+grep -r "addListener" /ruta/a/JUCE/modules/juce_osc/
 ```
 
 ## Estado del Proyecto
@@ -437,9 +437,9 @@ Si `getNextPacket()` no existe:
 
 ## Información del Sistema
 
-- **OS:** macOS (darwin 25.2.0)
+- **OS:** macOS
 - **Compilador:** Clang (Xcode)
-- **JUCE Path:** `/Applications/JUCE/modules/`
+- **JUCE Path:** `/ruta/a/JUCE/modules/` (típicamente `/Applications/JUCE/modules/` en macOS)
 - **Proyecto:** Xcode (macOS) exportado desde Projucer
 
 ---
