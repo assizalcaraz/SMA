@@ -50,6 +50,30 @@ Webcam → MediaPipe → (puntos y velocidades) → Fuerzas → Partículas →
 Colisiones → Eventos → OSC → JUCE → Audio
 ```
 
+### App C — MAAD-2-CALIB (v0.4)
+
+**SMA v0.4 – Calibration & Validation Layer**
+
+- **Formato:** Módulo independiente (C++ para control + Python/Jupyter para análisis)
+- **Responsabilidades:**
+  1. **CONTROL:** Orquestación de transporte OSC para sesiones de calibración reproducibles
+  2. **REGISTRATION:** Captura y registro de datos (NDJSON + WAV + metadata)
+  3. **ANALYSIS:** Análisis offline con técnicas de procesamiento digital de señales
+- **Integración:** Se conecta al sistema existente mediante OSC, no modifica arquitectura core
+- **Salida:** Datos estructurados en `runs/YYYYMMDD_HHMMSS/` para análisis posterior
+
+**Arquitectura v0.4:**
+
+```
+oF (Particles) → JUCE (Synthesis) → CALIB (Control + Registration) → 
+Notebook (Analysis) → Report (HTML)
+```
+
+**Documentación del módulo CALIB:**
+- [`maad-2-calib/README.md`](maad-2-calib/README.md) — Descripción general del módulo
+- [`maad-2-calib/specs/CALIB_SPEC.md`](maad-2-calib/specs/CALIB_SPEC.md) — Especificación técnica completa
+- [`maad-2-calib/specs/ACADEMIC_ALIGNMENT.md`](maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Alineación académica MAAD-2
+
 ---
 
 ## Contrato OSC
@@ -129,6 +153,14 @@ Sistema Modular Audiovisual/
 ├── app-juce/           # App B: JUCE
 │   ├── Source/         # Código fuente
 │   └── JuceLibraryCode/ # Librerías JUCE
+├── maad-2-calib/       # App C: MAAD-2-CALIB (v0.4)
+│   ├── README.md       # Descripción del módulo
+│   ├── specs/          # Especificaciones técnicas
+│   │   ├── CALIB_SPEC.md           # Especificación técnica
+│   │   └── ACADEMIC_ALIGNMENT.md   # Alineación académica
+│   ├── src/            # Código fuente (C++)
+│   ├── notebooks/      # Notebooks de análisis (Python/Jupyter)
+│   └── runs/           # Sesiones de calibración (generadas)
 ├── Docs/               # Documentación completa
 │   ├── README.md       # Índice de documentación
 │   ├── specs/          # Especificaciones técnicas
@@ -318,6 +350,7 @@ Posgrado de especialización en sonido para las artes digitales
 **Materias:**
 - Imagen y Sonido en Tiempo Real (ISTR)
 - Programación aplicada al sonido 1 (PAS1)
+- Matemática Aplicada al Arte Digital II (MAAD-2) — v0.4
 
 **Fecha:** Febrero 2026
 
@@ -331,6 +364,7 @@ Posgrado de especialización en sonido para las artes digitales
 - **Plan de desarrollo**: [Docs/specs/PLAN_IMPLEMENTACION.md](Docs/specs/PLAN_IMPLEMENTACION.md) — Fases y tareas
 - **Contrato OSC**: [Docs/api-osc.md](Docs/api-osc.md) — Contrato de mensajes
 - **Documentación de Particles**: [Docs/Particles/](Docs/Particles/) — Módulo de partículas
+- **Documentación de CALIB (v0.4)**: [maad-2-calib/README.md](maad-2-calib/README.md) — Módulo de calibración y validación
 - **Mapeo código → docs**: [Docs/index.md](Docs/index.md) — Índice de archivos
 
 ## Referencias Externas
