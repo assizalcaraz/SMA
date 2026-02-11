@@ -1,6 +1,6 @@
 # Estado Actual del Proyecto
 
-**Última actualización**: 2026-02-XX (v0.3)
+**Última actualización**: 2026-02-XX (v0.4)
 
 Este documento describe el estado actual de implementación del Sistema Modular Audiovisual, qué componentes están completados, en desarrollo o pendientes.
 
@@ -323,9 +323,10 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - ✅ Fase 6: Sintetizador básico (JUCE Standalone)
   - ✅ Fase 7: Receptor OSC y mapeo (partículas)
   - ✅ Fase 8: Sistema Plate paralelo (Plate Controller + PlateSynth)
-- **Módulos funcionales**: 2 de 2 (100%)
+- **Módulos funcionales**: 3 de 3 (100%)
   - ✅ Particles (App A) - Completo (incluye Plate Controller)
   - ✅ Sintetizador JUCE (App B) - Completo (partículas + plate)
+  - ✅ MAAD-2-CALIB (App C) - Scaffolding completo (v0.4)
 - **Documentación**: Completa para módulos implementados
 
 ---
@@ -335,7 +336,70 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - [Plan de implementación](../specs/PLAN_IMPLEMENTACION.md) — Detalles de fases y tareas
 - [Especificación técnica](../specs/spec.md) — Arquitectura y diseño
 - [Documentación de Particles](../Particles/README.md) — Detalles del módulo
+- [Documentación de CALIB (v0.4)](../../maad-2-calib/README.md) — Módulo de calibración y validación
 
 ---
 
-**Última actualización**: 2026-02-10 (Mejoras de simetría y estabilidad en simulación Chladni)
+---
+
+## v0.4: MAAD-2-CALIB — Módulo de Calibración y Validación
+
+**Estado**: ✅ **Scaffolding completado** (2026-02-XX)
+
+### Descripción
+
+MAAD-2-CALIB es un módulo de calibración y validación diseñado como trabajo final integrador de **Matemática Aplicada al Arte Digital II (MAAD-2)**. Proporciona tres responsabilidades principales:
+
+1. **CONTROL:** Orquestación de transporte OSC para sesiones de calibración reproducibles
+2. **REGISTRATION:** Captura y registro de datos (NDJSON + WAV + metadata)
+3. **ANALYSIS:** Análisis offline basado en Python/Jupyter con técnicas de procesamiento digital de señales
+
+### Componentes Implementados
+
+#### Documentación
+- ✅ **README.md** — Descripción general del módulo con diagrama de arquitectura
+- ✅ **CALIB_SPEC.md** — Especificación técnica completa:
+  - Contrato OSC de control (`/test/start`, `/test/stop`, `/test/seek`, `/test/rate`, `/test/seed`, `/test/beep`)
+  - Estructura de artefactos de salida (`runs/YYYYMMDD_HHMMSS/`)
+  - Non-goals claramente definidos
+- ✅ **ACADEMIC_ALIGNMENT.md** — Alineación académica completa:
+  - Temas del curso MAAD-2 cubiertos (DFT, STFT, Transformada Z, Sistemas LTI, etc.)
+  - Herramientas matemáticas involucradas
+  - Técnicas de procesamiento de señales
+  - Metodología de validación y reproducibilidad
+  - Criterios de evaluación del TFI
+
+#### Código (Placeholders)
+- ✅ **main.cpp** — Estructura básica con comentarios y TODOs
+- ✅ **analysis_template.ipynb** — Template de Jupyter notebook con:
+  - Secciones alineadas con contenidos MAAD-2
+  - Imports básicos (numpy, scipy, librosa, matplotlib)
+  - Estructura para análisis completo (DFT, STFT, sistemas LTI, etc.)
+
+#### Estructura
+- ✅ Directorios creados: `specs/`, `src/`, `runs/`, `notebooks/`
+
+### Integración con Sistema Existente
+
+- ✅ Compatible con puerto OSC existente (9000)
+- ✅ Escucha mensajes OSC existentes (`/hit`, `/state`, `/plate`)
+- ✅ No modifica arquitectura core del sistema
+- ✅ Agrega comandos de control (`/test/*`) para orquestación
+
+### Próximos Pasos
+
+- ⏳ Implementación de lógica de CONTROL (orquestación OSC)
+- ⏳ Implementación de lógica de REGISTRATION (captura NDJSON + WAV)
+- ⏳ Implementación completa de análisis en notebook (DFT, STFT, etc.)
+- ⏳ Testing de sesiones de calibración
+- ⏳ Validación de reproducibilidad experimental
+
+### Referencias
+
+- [README del módulo](../../maad-2-calib/README.md) — Descripción general
+- [Especificación técnica](../../maad-2-calib/specs/CALIB_SPEC.md) — Detalles técnicos
+- [Alineación académica](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Contenidos MAAD-2
+
+---
+
+**Última actualización**: 2026-02-XX (v0.4: Scaffolding de MAAD-2-CALIB completado)
