@@ -75,7 +75,36 @@ Cuando se realizan cambios en el código, es importante actualizar la documentac
 
 ---
 
-### 3. `osc_contract` — Contrato OSC
+### 3. `calib_module` — Módulo CALIB (App C)
+
+**Descripción**: Documentación del módulo de calibración y validación MAAD-2-CALIB.
+
+**Archivos incluidos**:
+- `Docs/CALIB/README.md` (índice del módulo)
+- `Docs/CALIB/readme.md` (descripción general y arquitectura)
+- `Docs/CALIB/manual.md` (manual de usuario, comandos OSC, análisis)
+- `Docs/CALIB/spec.md` (especificación técnica)
+
+**Cuándo actualizar**:
+- ✅ Cambios en `maad-2-calib/src/*.cpp` o `*.h`
+- ✅ Cambios en `maad-2-calib/notebooks/*.ipynb`
+- ✅ Nuevos comandos OSC de control (`/test/*`)
+- ✅ Cambios en estructura de artefactos de salida (NDJSON, WAV, metadata)
+- ✅ Cambios en técnicas de análisis (DFT, STFT, métricas)
+- ✅ Cambios en formato de datos o estructura de sesiones
+
+**Ejemplo**:
+```bash
+# Cambio: Agregar nuevo comando OSC /test/pause
+# Actualizar: 
+#   - Docs/CALIB/spec.md (especificación técnica del nuevo comando)
+#   - Docs/CALIB/manual.md (documentación del comando para usuarios)
+#   - Docs/CALIB/readme.md (si afecta arquitectura)
+```
+
+---
+
+### 4. `osc_contract` — Contrato OSC
 
 **Descripción**: Documentación del contrato de mensajes OSC entre App A y App B.
 
@@ -103,7 +132,7 @@ Cuando se realizan cambios en el código, es importante actualizar la documentac
 
 ---
 
-### 4. `architecture` — Arquitectura y Diseño
+### 5. `architecture` — Arquitectura y Diseño
 
 **Descripción**: Documentación de arquitectura, diseño y estado del proyecto.
 
@@ -131,14 +160,15 @@ Cuando se realizan cambios en el código, es importante actualizar la documentac
 
 ---
 
-### 5. `setup` — Instalación y Configuración
+### 6. `setup` — Instalación y Configuración
 
 **Descripción**: Documentación de instalación, requisitos y configuración.
 
 **Archivos incluidos**:
 - `readme.md` (secciones de requisitos e instalación)
 - `Docs/Particles/manual.md` (configuración del módulo)
-- `Docs/JUCE/manual.md` (configuración del módulo, cuando exista)
+- `Docs/JUCE/manual.md` (configuración del módulo)
+- `Docs/CALIB/manual.md` (configuración del módulo)
 
 **Cuándo actualizar**:
 - ✅ Cambios en requisitos del sistema
@@ -157,7 +187,7 @@ Cuando se realizan cambios en el código, es importante actualizar la documentac
 
 ---
 
-### 6. `workflows` — Flujos de Trabajo y Guías
+### 7. `workflows` — Flujos de Trabajo y Guías
 
 **Descripción**: Documentación de procesos, workflows y guías de uso.
 
@@ -231,6 +261,16 @@ Algunos cambios pueden afectar múltiples scopes. En estos casos, actualiza todo
 #   - Docs/JUCE/spec.md (juce_module)
 ```
 
+**Ejemplo**: Cambio en comandos OSC de control que afecta CALIB
+```bash
+# Cambio: Agregar nuevo comando /test/pause
+# Scopes afectados: osc_contract, calib_module
+# Actualizar:
+#   - Docs/api-osc.md (osc_contract, si se documenta allí)
+#   - Docs/CALIB/spec.md (calib_module)
+#   - Docs/CALIB/manual.md (calib_module)
+```
+
 ### Cambios Arquitectónicos
 
 Los cambios arquitectónicos suelen requerir actualizar múltiples documentos:
@@ -270,6 +310,7 @@ Los cambios arquitectónicos suelen requerir actualizar múltiples documentos:
 - Actualizar `Docs/README.md` con el nuevo módulo
 - Actualizar `Docs/index.md` con el mapeo código → documentación
 - Actualizar `Docs/overview/ESTADO_ACTUAL.md` con el estado del nuevo módulo
+- Agregar scope correspondiente en `Docs/guides/SCOPES_DOCUMENTACION.md`
 
 ---
 

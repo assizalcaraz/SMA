@@ -61,16 +61,17 @@
 
 **Código fuente:** `maad-2-calib/src/`
 
-| Archivo | Documentación |
-|---------|---------------|
-| `maad-2-calib/src/main.cpp` | [`../maad-2-calib/specs/CALIB_SPEC.md`](../maad-2-calib/specs/CALIB_SPEC.md) - Punto de entrada |
-| `maad-2-calib/notebooks/analysis_template.ipynb` | [`../maad-2-calib/specs/CALIB_SPEC.md`](../maad-2-calib/specs/CALIB_SPEC.md) - Análisis offline |
+| Archivo | Documentación | Descripción |
+|---------|---------------|-------------|
+| `maad-2-calib/src/main.cpp` | [`CALIB/spec.md`](CALIB/spec.md) | Punto de entrada de la aplicación (placeholder) |
+| `maad-2-calib/notebooks/analysis_template.ipynb` | [`CALIB/spec.md`](CALIB/spec.md), [`CALIB/manual.md`](CALIB/manual.md) | Template de análisis Jupyter con técnicas de procesamiento de señales |
 
 **Documentación del módulo:**
 
-- [`../maad-2-calib/README.md`](../maad-2-calib/README.md) - Descripción general y arquitectura
-- [`../maad-2-calib/specs/CALIB_SPEC.md`](../maad-2-calib/specs/CALIB_SPEC.md) - Especificación técnica completa
-- [`../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md`](../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) - Alineación académica MAAD-2
+- [`CALIB/README.md`](CALIB/README.md) - Índice del módulo
+- [`CALIB/readme.md`](CALIB/readme.md) - Descripción general y arquitectura
+- [`CALIB/manual.md`](CALIB/manual.md) - Manual de usuario (comandos OSC, uso, análisis)
+- [`CALIB/spec.md`](CALIB/spec.md) - Especificación técnica detallada
 
 ---
 
@@ -92,7 +93,7 @@
 
 - [`Particles/README.md`](Particles/README.md) - Índice del módulo Particles
 - [`JUCE/README.md`](JUCE/README.md) - Índice del módulo JUCE
-- [`../maad-2-calib/README.md`](../maad-2-calib/README.md) - Índice del módulo CALIB
+- [`CALIB/README.md`](CALIB/README.md) - Índice del módulo CALIB
 
 ### Nivel 3: Guías y Procesos
 
@@ -115,6 +116,16 @@ Docs/
 ├── guides/                     # Nivel 3: Guías y procesos
 │   └── SCOPES_DOCUMENTACION.md
 ├── Particles/                  # Nivel 3: Documentación de módulos
+│   ├── README.md              # Índice del módulo
+│   ├── readme.md              # Descripción general
+│   ├── manual.md              # Manual de usuario
+│   └── spec.md                # Especificación técnica
+├── JUCE/                       # Nivel 3: Documentación de módulos
+│   ├── README.md              # Índice del módulo
+│   ├── readme.md              # Descripción general
+│   ├── manual.md              # Manual de usuario
+│   └── spec.md                # Especificación técnica
+├── CALIB/                      # Nivel 3: Documentación de módulos
 │   ├── README.md              # Índice del módulo
 │   ├── readme.md              # Descripción general
 │   ├── manual.md              # Manual de usuario
@@ -149,7 +160,7 @@ Docs/
 1. [Especificación técnica](specs/spec.md)
 2. [Documentación de módulos](Particles/)
 3. [Documentación de JUCE](JUCE/README.md)
-4. [Documentación de CALIB](../maad-2-calib/README.md)
+4. [Documentación de CALIB](CALIB/README.md)
 5. [Contrato OSC](api-osc.md)
 6. [Plan de implementación](specs/PLAN_IMPLEMENTACION.md)
 
@@ -158,7 +169,7 @@ Docs/
 2. [Plan de implementación](specs/PLAN_IMPLEMENTACION.md)
 3. [Documentación de módulos](Particles/)
 4. [Documentación de JUCE](JUCE/README.md)
-5. [Documentación de CALIB](../maad-2-calib/README.md)
+5. [Documentación de CALIB](CALIB/README.md)
 
 Ver [README.md](README.md) para más detalles sobre rutas de aprendizaje.
 

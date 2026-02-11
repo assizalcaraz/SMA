@@ -340,7 +340,7 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - [Plan de implementación](../specs/PLAN_IMPLEMENTACION.md) — Detalles de fases y tareas
 - [Especificación técnica](../specs/spec.md) — Arquitectura y diseño
 - [Documentación de Particles](../Particles/README.md) — Detalles del módulo
-- [Documentación de CALIB (v0.4)](../../maad-2-calib/README.md) — Módulo de calibración y validación
+- [Documentación de CALIB (v0.4)](../CALIB/README.md) — Módulo de calibración y validación
 
 ---
 
@@ -400,9 +400,12 @@ MAAD-2-CALIB es un módulo de calibración y validación diseñado como trabajo 
 
 ### Referencias
 
-- [README del módulo](../../maad-2-calib/README.md) — Descripción general
-- [Especificación técnica](../../maad-2-calib/specs/CALIB_SPEC.md) — Detalles técnicos
-- [Alineación académica](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Contenidos MAAD-2
+**Documentación:**
+- [Índice del Módulo CALIB](../CALIB/README.md)
+- [Descripción General y Arquitectura](../CALIB/readme.md)
+- [Manual de Usuario](../CALIB/manual.md)
+- [Especificación Técnica](../CALIB/spec.md)
+- [Alineación académica](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Contenidos MAAD-2 (ubicado en maad-2-calib/specs/)
 
 ---
 

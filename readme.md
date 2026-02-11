@@ -76,9 +76,10 @@ Notebook (Analysis) → Report (HTML)
 ```
 
 **Documentación del módulo CALIB:**
-- [`maad-2-calib/README.md`](maad-2-calib/README.md) — Descripción general del módulo
-- [`maad-2-calib/specs/CALIB_SPEC.md`](maad-2-calib/specs/CALIB_SPEC.md) — Especificación técnica completa
-- [`maad-2-calib/specs/ACADEMIC_ALIGNMENT.md`](maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Alineación académica MAAD-2
+- [`Docs/CALIB/README.md`](Docs/CALIB/README.md) - Índice del módulo
+- [`Docs/CALIB/readme.md`](Docs/CALIB/readme.md) - Descripción general y arquitectura
+- [`Docs/CALIB/manual.md`](Docs/CALIB/manual.md) - Manual de usuario (comandos OSC, uso, análisis)
+- [`Docs/CALIB/spec.md`](Docs/CALIB/spec.md) - Especificación técnica
 
 ---
 
@@ -371,7 +372,7 @@ Posgrado de especialización en sonido para las artes digitales
 - **Contrato OSC**: [Docs/api-osc.md](Docs/api-osc.md) — Contrato de mensajes
 - **Documentación de Particles**: [Docs/Particles/](Docs/Particles/) — Módulo de partículas
 - **Documentación de JUCE**: [Docs/JUCE/](Docs/JUCE/) — Módulo de síntesis
-- **Documentación de CALIB (v0.4)**: [maad-2-calib/README.md](maad-2-calib/README.md) — Módulo de calibración y validación
+- **Documentación de CALIB (v0.4)**: [Docs/CALIB/README.md](Docs/CALIB/README.md) — Módulo de calibración y validación
 - **Mapeo código → docs**: [Docs/index.md](Docs/index.md) — Índice de archivos
 
 ## Referencias Externas

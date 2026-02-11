@@ -51,10 +51,10 @@ Documentación técnica de módulos y componentes del sistema.
 
 #### App C - MAAD-2-CALIB
 
-- **[MAAD-2-CALIB](../../maad-2-calib/README.md)** — Módulo de calibración y validación
-  - [`README.md`](../../maad-2-calib/README.md) — Descripción general y arquitectura
-  - [`CALIB_SPEC.md`](../../maad-2-calib/specs/CALIB_SPEC.md) — Especificación técnica completa
-  - [`ACADEMIC_ALIGNMENT.md`](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Alineación académica MAAD-2
+- **[CALIB](CALIB/README.md)** — Módulo de calibración y validación
+  - [`readme.md`](CALIB/readme.md) — Descripción general y arquitectura
+  - [`manual.md`](CALIB/manual.md) — Manual de usuario (comandos OSC, uso, análisis)
+  - [`spec.md`](CALIB/spec.md) — Especificación técnica detallada
 
 ---
 
@@ -80,7 +80,7 @@ Guías específicas de procesos y mantenimiento.
 1. **[Especificación técnica](specs/spec.md)** — Entender arquitectura y diseño
 2. **[Documentación de módulos](Particles/)** — Entender implementación de código
 3. **[Documentación de JUCE](JUCE/README.md)** — Entender módulo de síntesis
-4. **[Documentación de CALIB](../../maad-2-calib/README.md)** — Entender módulo de calibración y validación
+4. **[Documentación de CALIB](CALIB/README.md)** — Entender módulo de calibración y validación
 5. **[Contrato OSC](api-osc.md)** — Entender comunicación entre apps
 5. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver fases de desarrollo
 
@@ -90,7 +90,7 @@ Guías específicas de procesos y mantenimiento.
 2. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver qué falta implementar
 3. **[Documentación de módulos](Particles/)** — Entender estructura del código
 4. **[Documentación de JUCE](JUCE/README.md)** — Entender módulo de síntesis
-5. **[Documentación de CALIB](../../maad-2-calib/README.md)** — Entender módulo de calibración
+5. **[Documentación de CALIB](CALIB/README.md)** — Entender módulo de calibración
 6. **[Índice código → documentación](index.md)** — Mapeo de archivos a documentación
 
 ---
@@ -121,11 +121,14 @@ Docs/
 │   ├── readme.md
 │   ├── manual.md
 │   └── spec.md
+├── CALIB/                      # Nivel 3: Documentación de módulos
+│   ├── README.md
+│   ├── readme.md
+│   ├── manual.md
+│   └── spec.md
 └── requisitos/                 # Requisitos de entrega
     └── Trabajo Final ISTR.md
 ```
-
-**Nota**: La documentación de **MAAD-2-CALIB (App C)** se encuentra en `../maad-2-calib/` (raíz del proyecto), no dentro de `Docs/`.
 
 ---
 
@@ -139,7 +142,7 @@ Docs/
 - **Plan de desarrollo**: [specs/PLAN_IMPLEMENTACION.md](specs/PLAN_IMPLEMENTACION.md)
 - **Documentación de Particles**: [Particles/](Particles/)
 - **Documentación de JUCE**: [JUCE/](JUCE/)
-- **Documentación de CALIB**: [maad-2-calib/README.md](../../maad-2-calib/README.md)
+- **Documentación de CALIB**: [CALIB/](CALIB/)
 - **Estado del proyecto**: [overview/ESTADO_ACTUAL.md](overview/ESTADO_ACTUAL.md)
 - **Scopes de documentación**: [guides/SCOPES_DOCUMENTACION.md](guides/SCOPES_DOCUMENTACION.md)
 
@@ -151,7 +154,7 @@ Docs/
 
 Cuando cambies código, actualiza la documentación correspondiente siguiendo la estructura del proyecto:
 
-- **Nuevo módulo** (`Particles/`, `JUCE/`) → Crear carpeta en `Docs/` con `README.md`, `readme.md`, `manual.md`, `spec.md`
+- **Nuevo módulo** (`Particles/`, `JUCE/`, `CALIB/`) → Crear carpeta en `Docs/` con `README.md`, `readme.md`, `manual.md`, `spec.md`
 - **Cambios en contrato OSC** → Actualizar `api-osc.md` (cuando se cree)
 - **Cambios arquitectónicos** → Actualizar `specs/spec.md` y `overview/ESTADO_ACTUAL.md`
 - **Nuevas fases completadas** → Actualizar `overview/ESTADO_ACTUAL.md` y `specs/PLAN_IMPLEMENTACION.md`
