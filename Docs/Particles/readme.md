@@ -464,3 +464,12 @@ Para contribuir o reportar problemas:
 1. Revisar la documentación técnica en [`spec.md`](spec.md)
 2. Seguir las convenciones de código existentes
 3. Documentar cambios en código y documentación
+
+---
+
+## Referencias
+
+### Placa de Chladni
+
+- **Placa de Chladni** — Universidad Complutense de Madrid. [Catálogo de experiencias de cátedra para la docencia de física general](https://www.ucm.es/data/cont/docs/76-2013-11-08-10_01_Chladnis_plate.pdf).  
+  Documento que describe el principio físico de las ondas estacionarias en dos dimensiones y la visualización de modos propios de vibración de una placa cuadrada. La implementación del sistema de placa de Chladni (Chladni State) en este módulo se basa en estos principios físicos.

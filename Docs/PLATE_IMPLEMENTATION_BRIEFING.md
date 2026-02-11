@@ -317,4 +317,13 @@ Todas las fases del plan se han completado exitosamente:
 
 ---
 
+## Referencias
+
+### Placa de Chladni
+
+- **Placa de Chladni** — Universidad Complutense de Madrid. [Catálogo de experiencias de cátedra para la docencia de física general](https://www.ucm.es/data/cont/docs/76-2013-11-08-10_01_Chladnis_plate.pdf).  
+  Documento que describe el principio físico de las ondas estacionarias en dos dimensiones, la visualización de modos propios de vibración de una placa cuadrada, y la teoría matemática que relaciona las frecuencias de resonancia con los números de líneas nodales (m, n). La implementación del sistema de placa de Chladni en este módulo se basa en estos principios físicos, específicamente en la ecuación de ondas en dos dimensiones y las condiciones de contorno que obligan a que el borde de la placa sea un antinodo.
+
+---
+
 **Fin del briefing**

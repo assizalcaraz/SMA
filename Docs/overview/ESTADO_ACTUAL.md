@@ -59,6 +59,8 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Clamp relativo de fuerza shaker (`F_SHAKER_MAX = 0.5 * F_MAX`)
   - Preservación completa de comportamiento v0.2 cuando Chladni está OFF
 
+**Referencia bibliográfica**: La implementación del sistema de placa de Chladni se basa en los principios físicos descritos en: [Placa de Chladni — Universidad Complutense de Madrid](https://www.ucm.es/data/cont/docs/76-2013-11-08-10_01_Chladnis_plate.pdf)
+
 ---
 
 ### 🔧 En Desarrollo
@@ -117,6 +119,7 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Sistema de coordenadas fijo (centro inmutable en centro de ventana)
   - Campo estacionario U(x̂,ŷ) = sin(mπx̂)*sin(nπŷ) según teoría de Chladni
   - Partículas se acumulan en nodos (líneas nodales estacionarias)
+  - **Referencia**: Basado en [Placa de Chladni — UCM](https://www.ucm.es/data/cont/docs/76-2013-11-08-10_01_Chladnis_plate.pdf)
 - ✅ **Mejoras de simetría y estabilidad** (2026-02-10):
   - Mezcla de modos degenerados para restaurar simetría en modos altos
   - Fuerza basada en energía (E = U²) físicamente más correcta
