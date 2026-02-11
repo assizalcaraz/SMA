@@ -35,3 +35,6 @@ DerivedData/
 # Temporary files
 *.tmp
 *.log
+
+# Material de referencia académica (no se trackea)
+app-calib/
