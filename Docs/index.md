@@ -31,11 +31,46 @@
 
 ### JUCE (App B)
 
-**Código fuente:** `app-juce/Source/`
+**Código fuente:** `app-juce/app-JUCE-PAS1/Source/`
 
-**Estado**: Pendiente de implementación
+| Archivo | Documentación | Descripción |
+|---------|---------------|-------------|
+| `app-juce/app-JUCE-PAS1/Source/Main.cpp` | [`JUCE/spec.md`](JUCE/spec.md) | Punto de entrada de la aplicación |
+| `app-juce/app-JUCE-PAS1/Source/MainComponent.h` | [`JUCE/spec.md`](JUCE/spec.md) | Declaración de la clase principal (UI y OSC) |
+| `app-juce/app-JUCE-PAS1/Source/MainComponent.cpp` | [`JUCE/spec.md`](JUCE/spec.md) | Implementación: UI, OSC receiver, audio callbacks |
+| `app-juce/app-JUCE-PAS1/Source/SynthesisEngine.h` | [`JUCE/spec.md`](JUCE/spec.md) | Declaración del motor de síntesis |
+| `app-juce/app-JUCE-PAS1/Source/SynthesisEngine.cpp` | [`JUCE/spec.md`](JUCE/spec.md) | Implementación: orquestación, cola lock-free, limiter |
+| `app-juce/app-JUCE-PAS1/Source/ModalVoice.h` | [`JUCE/spec.md`](JUCE/spec.md) | Declaración de voz modal |
+| `app-juce/app-JUCE-PAS1/Source/ModalVoice.cpp` | [`JUCE/spec.md`](JUCE/spec.md) | Implementación: resonadores modales, excitación |
+| `app-juce/app-JUCE-PAS1/Source/VoiceManager.h` | [`JUCE/spec.md`](JUCE/spec.md) | Declaración del gestor de polyphony |
+| `app-juce/app-JUCE-PAS1/Source/VoiceManager.cpp` | [`JUCE/spec.md`](JUCE/spec.md) | Implementación: voice stealing, gestión de voces |
+| `app-juce/app-JUCE-PAS1/Source/PlateSynth.h` | [`JUCE/spec.md`](JUCE/spec.md) | Declaración del sintetizador de placa |
+| `app-juce/app-JUCE-PAS1/Source/PlateSynth.cpp` | [`JUCE/spec.md`](JUCE/spec.md) | Implementación: síntesis de placa metálica |
+| `app-juce/app-JUCE-PAS1/Source/SynthParameters.h` | [`JUCE/spec.md`](JUCE/spec.md) | Parámetros globales del sintetizador |
 
-**Documentación**: Pendiente
+**Documentación del módulo:**
+
+- [`JUCE/README.md`](JUCE/README.md) - Índice del módulo
+- [`JUCE/readme.md`](JUCE/readme.md) - Descripción general y arquitectura
+- [`JUCE/manual.md`](JUCE/manual.md) - Manual de usuario (parámetros, uso)
+- [`JUCE/spec.md`](JUCE/spec.md) - Especificación técnica detallada
+
+---
+
+### MAAD-2-CALIB (App C)
+
+**Código fuente:** `maad-2-calib/src/`
+
+| Archivo | Documentación |
+|---------|---------------|
+| `maad-2-calib/src/main.cpp` | [`../maad-2-calib/specs/CALIB_SPEC.md`](../maad-2-calib/specs/CALIB_SPEC.md) - Punto de entrada |
+| `maad-2-calib/notebooks/analysis_template.ipynb` | [`../maad-2-calib/specs/CALIB_SPEC.md`](../maad-2-calib/specs/CALIB_SPEC.md) - Análisis offline |
+
+**Documentación del módulo:**
+
+- [`../maad-2-calib/README.md`](../maad-2-calib/README.md) - Descripción general y arquitectura
+- [`../maad-2-calib/specs/CALIB_SPEC.md`](../maad-2-calib/specs/CALIB_SPEC.md) - Especificación técnica completa
+- [`../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md`](../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) - Alineación académica MAAD-2
 
 ---
 
@@ -56,7 +91,8 @@
 ### Nivel 3: Documentación de Módulos
 
 - [`Particles/README.md`](Particles/README.md) - Índice del módulo Particles
-- **JUCE**: Pendiente
+- [`JUCE/README.md`](JUCE/README.md) - Índice del módulo JUCE
+- [`../maad-2-calib/README.md`](../maad-2-calib/README.md) - Índice del módulo CALIB
 
 ### Nivel 3: Guías y Procesos
 
@@ -112,16 +148,20 @@ Docs/
 ### Para Desarrolladores
 1. [Especificación técnica](specs/spec.md)
 2. [Documentación de módulos](Particles/)
-3. [Contrato OSC](api-osc.md) (pendiente)
-4. [Plan de implementación](specs/PLAN_IMPLEMENTACION.md)
+3. [Documentación de JUCE](JUCE/README.md)
+4. [Documentación de CALIB](../maad-2-calib/README.md)
+5. [Contrato OSC](api-osc.md)
+6. [Plan de implementación](specs/PLAN_IMPLEMENTACION.md)
 
 ### Para Contribuidores
 1. [Estado actual](overview/ESTADO_ACTUAL.md)
 2. [Plan de implementación](specs/PLAN_IMPLEMENTACION.md)
 3. [Documentación de módulos](Particles/)
+4. [Documentación de JUCE](JUCE/README.md)
+5. [Documentación de CALIB](../maad-2-calib/README.md)
 
 Ver [README.md](README.md) para más detalles sobre rutas de aprendizaje.
 
 ---
 
-**Última actualización:** 2026-01-20
+**Última actualización:** 2026-02-11

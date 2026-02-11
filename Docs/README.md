@@ -1,7 +1,7 @@
 # Documentación del Sistema Modular Audiovisual
 
 **Versión**: v0.1  
-**Última actualización**: 2026-01-20
+**Última actualización**: 2026-02-11
 
 Este directorio contiene toda la documentación del proyecto, organizada en niveles de lectura claros y siguiendo la estructura del proyecto.
 
@@ -44,7 +44,17 @@ Documentación técnica de módulos y componentes del sistema.
 
 #### App B - JUCE
 
-- **JUCE App** — Documentación del sintetizador (pendiente de implementación)
+- **[JUCE](JUCE/README.md)** — Módulo de síntesis en JUCE
+  - [`readme.md`](JUCE/readme.md) — Descripción general y arquitectura
+  - [`manual.md`](JUCE/manual.md) — Manual de usuario
+  - [`spec.md`](JUCE/spec.md) — Especificación técnica
+
+#### App C - MAAD-2-CALIB
+
+- **[MAAD-2-CALIB](../../maad-2-calib/README.md)** — Módulo de calibración y validación
+  - [`README.md`](../../maad-2-calib/README.md) — Descripción general y arquitectura
+  - [`CALIB_SPEC.md`](../../maad-2-calib/specs/CALIB_SPEC.md) — Especificación técnica completa
+  - [`ACADEMIC_ALIGNMENT.md`](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Alineación académica MAAD-2
 
 ---
 
@@ -69,15 +79,19 @@ Guías específicas de procesos y mantenimiento.
 
 1. **[Especificación técnica](specs/spec.md)** — Entender arquitectura y diseño
 2. **[Documentación de módulos](Particles/)** — Entender implementación de código
-3. **[Contrato OSC](api-osc.md)** — Entender comunicación entre apps (pendiente)
-4. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver fases de desarrollo
+3. **[Documentación de JUCE](JUCE/README.md)** — Entender módulo de síntesis
+4. **[Documentación de CALIB](../../maad-2-calib/README.md)** — Entender módulo de calibración y validación
+5. **[Contrato OSC](api-osc.md)** — Entender comunicación entre apps
+5. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver fases de desarrollo
 
 ### Para Contribuidores
 
 1. **[Estado actual](overview/ESTADO_ACTUAL.md)** — Ver qué está implementado
 2. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver qué falta implementar
 3. **[Documentación de módulos](Particles/)** — Entender estructura del código
-4. **[Índice código → documentación](index.md)** — Mapeo de archivos a documentación
+4. **[Documentación de JUCE](JUCE/README.md)** — Entender módulo de síntesis
+5. **[Documentación de CALIB](../../maad-2-calib/README.md)** — Entender módulo de calibración
+6. **[Índice código → documentación](index.md)** — Mapeo de archivos a documentación
 
 ---
 
@@ -102,9 +116,16 @@ Docs/
 │   ├── readme.md
 │   ├── manual.md
 │   └── spec.md
+├── JUCE/                       # Nivel 3: Documentación de módulos
+│   ├── README.md
+│   ├── readme.md
+│   ├── manual.md
+│   └── spec.md
 └── requisitos/                 # Requisitos de entrega
     └── Trabajo Final ISTR.md
 ```
+
+**Nota**: La documentación de **MAAD-2-CALIB (App C)** se encuentra en `../maad-2-calib/` (raíz del proyecto), no dentro de `Docs/`.
 
 ---
 
@@ -117,6 +138,8 @@ Docs/
 - **Contrato OSC**: [api-osc.md](api-osc.md)
 - **Plan de desarrollo**: [specs/PLAN_IMPLEMENTACION.md](specs/PLAN_IMPLEMENTACION.md)
 - **Documentación de Particles**: [Particles/](Particles/)
+- **Documentación de JUCE**: [JUCE/](JUCE/)
+- **Documentación de CALIB**: [maad-2-calib/README.md](../../maad-2-calib/README.md)
 - **Estado del proyecto**: [overview/ESTADO_ACTUAL.md](overview/ESTADO_ACTUAL.md)
 - **Scopes de documentación**: [guides/SCOPES_DOCUMENTACION.md](guides/SCOPES_DOCUMENTACION.md)
 
@@ -148,4 +171,4 @@ Mantén la separación entre niveles de lectura:
 
 ---
 
-**Última actualización**: 2026-01-20
+**Última actualización**: 2026-02-11

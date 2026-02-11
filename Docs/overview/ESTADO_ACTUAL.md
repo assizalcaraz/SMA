@@ -241,7 +241,11 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Fail-safe: fade-out automático después de 2 segundos sin updates
   - Thread-safe: parámetros usando atomic, buffer pre-allocado
 
-**Documentación**: Ver `PROMPT_FASE6.md` para detalles de implementación
+**Documentación**: Completa en `Docs/JUCE/`
+- [`Docs/JUCE/README.md`](../JUCE/README.md) - Índice del módulo
+- [`Docs/JUCE/readme.md`](../JUCE/readme.md) - Descripción general y arquitectura
+- [`Docs/JUCE/manual.md`](../JUCE/manual.md) - Manual de usuario
+- [`Docs/JUCE/spec.md`](../JUCE/spec.md) - Especificación técnica
 
 ---
 

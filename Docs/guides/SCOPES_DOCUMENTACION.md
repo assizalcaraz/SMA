@@ -51,10 +51,10 @@ Cuando se realizan cambios en el código, es importante actualizar la documentac
 **Descripción**: Documentación del sintetizador en JUCE.
 
 **Archivos incluidos**:
-- `Docs/JUCE/readme.md` (cuando se cree)
-- `Docs/JUCE/manual.md` (cuando se cree)
-- `Docs/JUCE/spec.md` (cuando se cree)
-- `Docs/JUCE/README.md` (cuando se cree)
+- `Docs/JUCE/README.md` (índice del módulo)
+- `Docs/JUCE/readme.md` (descripción general y arquitectura)
+- `Docs/JUCE/manual.md` (manual de usuario, parámetros)
+- `Docs/JUCE/spec.md` (especificación técnica)
 
 **Cuándo actualizar**:
 - ✅ Cambios en `app-juce/Source/*.cpp` o `*.h`
@@ -67,7 +67,10 @@ Cuando se realizan cambios en el código, es importante actualizar la documentac
 **Ejemplo**:
 ```bash
 # Cambio: Agregar nuevo modo de síntesis
-# Actualizar: Docs/JUCE/spec.md, Docs/JUCE/manual.md
+# Actualizar: 
+#   - Docs/JUCE/spec.md (especificación técnica del nuevo modo)
+#   - Docs/JUCE/manual.md (parámetro nuevo en UI)
+#   - Docs/JUCE/readme.md (si afecta arquitectura)
 ```
 
 ---

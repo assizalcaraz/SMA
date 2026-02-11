@@ -18,6 +18,12 @@ Este sistema permite generar sonido en tiempo real a partir del movimiento corpo
 - [`Docs/Particles/manual.md`](Docs/Particles/manual.md) - Manual de usuario (parámetros)
 - [`Docs/Particles/spec.md`](Docs/Particles/spec.md) - Especificación técnica
 
+**Documentación del módulo JUCE:**
+- [`Docs/JUCE/README.md`](Docs/JUCE/README.md) - Índice del módulo
+- [`Docs/JUCE/readme.md`](Docs/JUCE/readme.md) - Descripción general y arquitectura
+- [`Docs/JUCE/manual.md`](Docs/JUCE/manual.md) - Manual de usuario
+- [`Docs/JUCE/spec.md`](Docs/JUCE/spec.md) - Especificación técnica
+
 ---
 
 ## Arquitectura del sistema
@@ -364,6 +370,7 @@ Posgrado de especialización en sonido para las artes digitales
 - **Plan de desarrollo**: [Docs/specs/PLAN_IMPLEMENTACION.md](Docs/specs/PLAN_IMPLEMENTACION.md) — Fases y tareas
 - **Contrato OSC**: [Docs/api-osc.md](Docs/api-osc.md) — Contrato de mensajes
 - **Documentación de Particles**: [Docs/Particles/](Docs/Particles/) — Módulo de partículas
+- **Documentación de JUCE**: [Docs/JUCE/](Docs/JUCE/) — Módulo de síntesis
 - **Documentación de CALIB (v0.4)**: [maad-2-calib/README.md](maad-2-calib/README.md) — Módulo de calibración y validación
 - **Mapeo código → docs**: [Docs/index.md](Docs/index.md) — Índice de archivos
 
