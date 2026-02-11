@@ -146,7 +146,7 @@ Permite controlar parámetros de oF desde JUCE.
 
 ```
 Sistema Modular Audiovisual/
-├── app-of/              # App A: openFrameworks
+├── Particles/           # App A: openFrameworks (sistema de partículas)
 │   ├── src/            # Código fuente
 │   ├── addons.make     # Configuración de addons
 │   └── config/         # Archivos de configuración

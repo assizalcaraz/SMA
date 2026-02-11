@@ -10,7 +10,7 @@ Plan detallado de desarrollo basado en la especificación técnica (`spec.md`) y
 
 ```
 Sistema Modular Audiovisual/
-├── app-of/              # App A: openFrameworks
+├── Particles/           # App A: openFrameworks (sistema de partículas)
 │   ├── src/            # Código fuente
 │   ├── addons.make     # Configuración de addons
 │   └── config/         # Archivos de configuración
@@ -38,8 +38,8 @@ Sistema Modular Audiovisual/
 - [x] Crear estructura de carpetas del proyecto
 - [ ] Configurar repositorio Git (si aplica)
 - [ ] Crear archivos de configuración base:
-  - [ ] `app-of/addons.make` — lista de addons necesarios
-  - [ ] `app-of/config/settings.xml` — configuración de parámetros
+  - [ ] `Particles/addons.make` — lista de addons necesarios
+  - [ ] `Particles/config/settings.xml` — configuración de parámetros
   - [ ] `app-juce/` — proyecto base de JUCE Standalone (crear en Projucer)
 - [ ] Documentar dependencias y versiones requeridas
 
@@ -67,7 +67,7 @@ Sistema Modular Audiovisual/
 
 #### 2.1 Setup de proyecto openFrameworks
 
-- [ ] Crear proyecto base en `app-of/`
+- [ ] Crear proyecto base en `Particles/`
 - [ ] Configurar addons necesarios en `addons.make`:
   - [ ] `ofxOsc` (para comunicación OSC, Fase 5)
   - [ ] `ofxMediaPipe` o alternativa (para tracking, Fase 3, opcional inicialmente)
