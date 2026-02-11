@@ -37,9 +37,9 @@ void ofApp::setup(){
     energy_b = 0.3f;         // Peso de distancia en energía (0.1-0.5)
     
     // Parámetros de rate limiting
-    max_hits_per_second = 400.0f;  // Máximo de hits por segundo (50-1000) - aumentado para sonido más denso
-    burst = 500.0f;                // Burst máximo (100-1000) - aumentado para permitir más eventos simultáneos
-    max_hits_per_frame = 30;        // Máximo de hits por frame (5-50) - aumentado para sonido más denso
+    max_hits_per_second = 800.0f;  // Máximo de hits por segundo (aumentado para más eventos sonoros)
+    burst = 1000.0f;                // Burst máximo (aumentado para permitir más eventos simultáneos)
+    max_hits_per_frame = 50;        // Máximo de hits por frame (aumentado para sonido más denso)
     
     // Inicializar rate limiter
     rate_limiter.tokens = burst;

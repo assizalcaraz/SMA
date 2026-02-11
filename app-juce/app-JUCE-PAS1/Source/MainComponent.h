@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "SynthesisEngine.h"
+#include <random>
 
 // Include OSC module directly (needed until project is regenerated from Projucer)
 // After regenerating, this can be removed as it will be in JuceHeader.h
@@ -63,6 +64,9 @@ private:
     juce::Slider subOscMixSlider;
     juce::Label subOscMixLabel;
     
+    juce::Slider pitchRangeSlider;
+    juce::Label pitchRangeLabel;
+    
     juce::Slider plateVolumeSlider;
     juce::Label plateVolumeLabel;
     
@@ -86,6 +90,10 @@ private:
     
     // Global state from /state messages (non-RT thread safe)
     std::atomic<float> globalPresence{1.0f};
+    
+    // Random number generator for pitch (thread-safe: solo se usa en UI thread)
+    std::mt19937 pitchRandomGen;
+    std::uniform_real_distribution<float> pitchRandomDist;
     
     //==============================================================================
     void setupSlider(juce::Slider& slider, juce::Label& label, const juce::String& name,

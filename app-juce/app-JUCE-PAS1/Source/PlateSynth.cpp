@@ -94,7 +94,9 @@ void PlateSynth::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSamp
         for (int sample = 0; sample < numSamples; sample++)
         {
             // Generar ruido blanco como excitación
-            float noise = (noiseGen.nextFloat() * 2.0f - 1.0f) * effectiveAmp;
+            // Reducir ganancia base del plate para balancear con partículas (0.1 = -20dB aprox)
+            // El plate es inherentemente más fuerte que las partículas, necesita más atenuación
+            float noise = (noiseGen.nextFloat() * 2.0f - 1.0f) * effectiveAmp * 0.1f;
             
             // Procesar por cada modo resonante y sumar
             float output = 0.0f;
