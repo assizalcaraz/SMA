@@ -42,6 +42,7 @@ public:
     void setMetalness(float metalness);
     void setWaveform(ModalVoice::ExcitationWaveform waveform);
     void setSubOscMix(float subOscMix);
+    void setPitchRange(float pitchRange);
     void setLimiterEnabled(bool enabled);
     void setPlateVolume(float volume);
 
@@ -50,6 +51,7 @@ public:
     float getMetalness() const;
     ModalVoice::ExcitationWaveform getWaveform() const;
     float getSubOscMix() const;
+    float getPitchRange() const;
     bool isLimiterEnabled() const;
     float getPlateVolume() const;
 
@@ -77,8 +79,8 @@ public:
 
 private:
     //==============================================================================
-    static constexpr int MAX_HITS_PER_BLOCK = 16; // Límite de eventos procesados por bloque
-    static constexpr int EVENT_QUEUE_SIZE = 64;  // Tamaño de la cola de eventos
+    static constexpr int MAX_HITS_PER_BLOCK = 32; // Límite de eventos procesados por bloque (aumentado para más eventos)
+    static constexpr int EVENT_QUEUE_SIZE = 128;  // Tamaño de la cola de eventos (aumentado para evitar descartes)
     
     VoiceManager voiceManager;
     PlateSynth plateSynth;
@@ -91,6 +93,7 @@ private:
     std::atomic<float> metalness{0.5f};
     std::atomic<int> waveform{0}; // ExcitationWaveform como int (enum class no es directamente atomic)
     std::atomic<float> subOscMix{0.0f};
+    std::atomic<float> pitchRange{0.5f}; // Rango de variación de pitch random (0.0-1.0)
     std::atomic<bool> limiterEnabled{true};
     std::atomic<float> plateVolume{1.0f}; // Volumen del módulo Plate (0.0-1.0)
     

@@ -1,12 +1,15 @@
 #include "MainComponent.h"
+#include <random>
 
 //==============================================================================
 MainComponent::MainComponent()
+    : pitchRandomGen(std::random_device{}()), pitchRandomDist(0.0f, 1.0f)
 {
     // Configurar sliders y labels (solo controles que funcionan)
     setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
     setupSlider(metalnessSlider, metalnessLabel, "Pitch", 0.0, 1.0, 0.5);
     setupSlider(subOscMixSlider, subOscMixLabel, "SubOsc Mix", 0.0, 1.0, 0.0);
+    setupSlider(pitchRangeSlider, pitchRangeLabel, "Pitch Range", 0.0, 1.0, 0.5); // Rango de variación de pitch random (0=sin variación, 1=máxima variación)
     setupSlider(plateVolumeSlider, plateVolumeLabel, "Plate Volume", 0.0, 1.0, 1.0);
     
     // Waveform selector
@@ -193,6 +196,11 @@ void MainComponent::resized()
     subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
     subOscMixSlider.setBounds(subOscArea);
     
+    // Pitch Range slider
+    auto pitchRangeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+    pitchRangeLabel.setBounds(pitchRangeArea.removeFromLeft(labelWidth));
+    pitchRangeSlider.setBounds(pitchRangeArea);
+    
     // Plate Volume slider
     auto plateVolumeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     plateVolumeLabel.setBounds(plateVolumeArea.removeFromLeft(labelWidth));
@@ -230,10 +238,15 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     {
         synthesisEngine.setSubOscMix((float)subOscMixSlider.getValue());
     }
+    else if (slider == &pitchRangeSlider)
+    {
+        synthesisEngine.setPitchRange((float)pitchRangeSlider.getValue());
+    }
     else if (slider == &plateVolumeSlider)
     {
-        // Mapeo exponencial: slider 0.1 → volumen 0.5 (mitad del rango)
+        // Mapeo exponencial muy suave: slider 0.01 → volumen 0.1 (10% en lugar de 50%)
         // slider 0.0 → volumen 0.0, slider 1.0 → volumen 1.0
+        // Mapeo ajustado para balancear con audio de partículas (plate suena más fuerte)
         float sliderValue = (float)plateVolumeSlider.getValue();
         float volume;
         
@@ -241,18 +254,23 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
         {
             volume = 0.0f;
         }
-        else if (sliderValue <= 0.1f)
+        else if (sliderValue <= 0.01f)
         {
-            // Mapeo exponencial de 0.0-0.1 a 0.0-0.5
-            // Usar exponente log(0.5) / log(0.1) ≈ 0.301
-            float normalized = sliderValue / 0.1f; // 0.0 a 1.0
-            volume = std::pow(normalized, 0.301f) * 0.5f;
+            // Mapeo exponencial muy suave de 0.0-0.01 a 0.0-0.05 (5% máximo)
+            // Usar exponente alto para curva muy gradual al inicio
+            float normalized = sliderValue / 0.01f; // 0.0 a 1.0
+            // Curva muy suave: exponente 0.8 hace que crezca muy gradualmente
+            // Ejemplo: sliderValue=0.003 → normalized=0.3 → pow(0.3, 0.8)≈0.38 → volume≈0.019 (1.9%)
+            float curve = std::pow(normalized, 0.8f); // Curva muy suave
+            volume = curve * 0.05f; // Máximo 5% en sliderValue = 0.01 (reducido para mejor balance)
         }
         else
         {
-            // Mapeo lineal de 0.1-1.0 a 0.5-1.0
-            float normalized = (sliderValue - 0.1f) / 0.9f; // 0.0 a 1.0
-            volume = 0.5f + normalized * 0.5f;
+            // Mapeo exponencial de 0.01-1.0 a 0.05-1.0 (más gradual que lineal)
+            float normalized = (sliderValue - 0.01f) / 0.99f; // 0.0 a 1.0
+            // Usar curva exponencial suave para el resto del rango también
+            float curve = std::pow(normalized, 0.7f); // Curva suave
+            volume = 0.05f + curve * 0.95f; // De 0.05 a 1.0
         }
         
         synthesisEngine.setPlateVolume(volume);
@@ -409,19 +427,22 @@ void MainComponent::mapOSCHitToEvent(const juce::OSCMessage& message)
     // Upper screen → drier (lower damping), Lower screen → longer decay (higher damping)
     float damping = 0.2f + ((1.0f - y) * 0.6f);
     
-    // Base frequency: 200 + (y * 400) Hz (200-600 Hz range)
-    float baseFreq = 200.0f + (y * 400.0f);
+    // Base frequency: Random dentro de rango controlado por slider
+    // Frecuencia base: 300 Hz (centro del rango metálico)
+    // Rango de variación controlado por pitchRange slider (0.0 = sin variación, 1.0 = ±200 Hz)
+    float pitchRange = synthesisEngine.getPitchRange();
+    float centerFreq = 300.0f; // Frecuencia central (Hz)
+    float maxVariation = 200.0f; // Variación máxima (±200 Hz)
     
-    // Metalness: optional modulation based on surface
-    // Use current global metalness, optionally modulate by surface
+    // Generar random pitch: centerFreq ± (pitchRange * maxVariation * random)
+    float randomValue = pitchRandomDist(pitchRandomGen); // 0.0 a 1.0
+    float variation = (randomValue * 2.0f - 1.0f) * pitchRange * maxVariation; // -maxVariation a +maxVariation
+    float baseFreq = centerFreq + variation;
+    baseFreq = juce::jlimit(100.0f, 800.0f, baseFreq); // Clamp a rango seguro
+    
+    // Metalness: usar valor global (unificado para todos los eventos)
+    // No modificar por surface para que bordes y colisiones suenen igual
     float metalness = synthesisEngine.getMetalness();
-    // Optional: slight variation by surface (0-3)
-    if (surface >= 0 && surface <= 3)
-    {
-        // Small variation: ±0.1 based on surface
-        float surfaceMod = (surface - 1.5f) * 0.066f; // -0.1 to +0.1
-        metalness = juce::jlimit(0.0f, 1.0f, metalness + surfaceMod);
-    }
     
     // Mapeo adaptativo de energy → waveform (Fase 4: Excitación Adaptativa)
     // Alta energía → formas agresivas, baja energía → formas suaves

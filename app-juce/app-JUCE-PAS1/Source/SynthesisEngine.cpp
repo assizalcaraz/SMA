@@ -150,6 +150,11 @@ void SynthesisEngine::setSubOscMix(float newSubOscMix)
     subOscMix.store(juce::jlimit(0.0f, 1.0f, newSubOscMix));
 }
 
+void SynthesisEngine::setPitchRange(float newPitchRange)
+{
+    pitchRange.store(juce::jlimit(0.0f, 1.0f, newPitchRange));
+}
+
 void SynthesisEngine::setLimiterEnabled(bool enabled)
 {
     limiterEnabled.store(enabled);
@@ -179,6 +184,11 @@ ModalVoice::ExcitationWaveform SynthesisEngine::getWaveform() const
 float SynthesisEngine::getSubOscMix() const
 {
     return subOscMix.load();
+}
+
+float SynthesisEngine::getPitchRange() const
+{
+    return pitchRange.load();
 }
 
 bool SynthesisEngine::isLimiterEnabled() const
