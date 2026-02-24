@@ -1,9 +1,9 @@
 # Documentación del Sistema Modular Audiovisual
 
 **Versión**: v0.1  
-**Última actualización**: 2026-01-20
+**Última actualización**: 2026-02-24
 
-Este directorio contiene toda la documentación del proyecto, organizada en niveles de lectura claros y siguiendo la estructura del proyecto.
+Este directorio contiene toda la documentación del proyecto, organizada en niveles de lectura claros y siguiendo la estructura del proyecto. Para entregas formales ISTR (Particles) y PAS1 (app-juce) sin CALIB, ver [Estado actual — Rama de entrega](overview/ESTADO_ACTUAL.md#contenido-de-la-rama-de-entrega).
 
 ---
 

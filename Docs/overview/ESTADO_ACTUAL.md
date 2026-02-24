@@ -6,6 +6,21 @@ Este documento describe el estado actual de implementación del Sistema Modular 
 
 **Rama de entrega ISTR/PAS1:** Esta rama (`entrega-istr-pas1`) es la base para empaquetar y entregar los módulos **Particles (ISTR)** y **app-juce (PAS1)** sin referencias a CALIB. OSC: un solo destino en puerto 9000; no hay mensajes `/test/*` ni grabación.
 
+### Contenido de la rama de entrega
+
+Sobre la base v0.3 se aplicaron únicamente parches que no dependen de CALIB:
+
+| Parche | Descripción |
+|--------|-------------|
+| 7031b47 | Rate limits (800 hits/s, burst 1000, 50/frame), control Pitch Range en JUCE, capacidad de cola, balance del Plate (-20 dB) |
+| a02e92e + strip | Mejoras de timbre (ADSR, excitación, sliders brightness/damping); eliminado modo test, fan-out OSC y grabación |
+| 83a7365 (parcial) | `getNormalized()` en Particles; corrección de `jmap` en ModalVoice (attack/decay) |
+| 85917e8 (PlateSynth) | RT-safety: contador por samples en lugar de `currentTimeMillis()` en el audio thread |
+
+**No incluido en esta rama:** receptores `/test/*`, grabación WAV, beeps, fan-out a puertos 9100/9002, `maad-2-calib`. La app real de openFrameworks es **Particles**; el directorio `app-of/` contiene solo un README que redirige a Particles.
+
+**Uso:** `git checkout entrega-istr-pas1` para trabajar y empaquetar los módulos ISTR (Particles) y PAS1 (app-juce). Compilar Particles y app-juce desde sus respectivos proyectos; enviar OSC desde Particles a app-juce en el puerto 9000.
+
 ---
 
 ## Resumen Ejecutivo
@@ -340,4 +355,4 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 
 ---
 
-**Última actualización**: 2026-02-10 (Mejoras de simetría y estabilidad en simulación Chladni)
+**Última actualización**: 2026-02-24 (Rama entrega ISTR/PAS1 documentada; parches aplicados sin CALIB)
