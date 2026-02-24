@@ -35,7 +35,7 @@ private:
     static constexpr int NUM_PLATE_MODES = 6; // Número de modos resonantes
     
     // Timeout para fail-safe (2 segundos)
-    static constexpr int TIMEOUT_MS = 2000;
+    static constexpr int failSafeSeconds = 2;
     
     //==============================================================================
     struct ResonantFilter
@@ -94,8 +94,10 @@ private:
     std::atomic<float> currentAmp{0.0f};
     std::atomic<int> currentMode{0};
     
-    // Timeout fail-safe (atomic para thread safety)
-    std::atomic<juce::int64> lastUpdateTime{0};
+    // Fail-safe basado en contador de samples (RT-safe)
+    std::atomic<uint64_t> plateUpdateCounter{0};
+    uint64_t lastSeenPlateUpdateCounter = 0;
+    int samplesSinceLastPlateUpdate = 0;
     
     // Filtros resonantes para cada modo
     ResonantFilter modes[NUM_PLATE_MODES];
@@ -127,6 +129,6 @@ private:
     /** Actualiza coeficientes de filtros cuando cambian parámetros */
     void updateFilterCoefficients();
     
-    /** Verifica timeout y actualiza fade-out gain */
-    void updateFailSafe();
+    /** Verifica timeout y actualiza fade-out gain (RT-safe: basado en samples) */
+    void updateFailSafe(int numSamples);
 };

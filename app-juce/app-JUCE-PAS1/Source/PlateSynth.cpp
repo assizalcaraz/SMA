@@ -39,15 +39,15 @@ void PlateSynth::triggerPlate(float freq, float amp, int mode)
     currentAmp.store(juce::jlimit(0.0f, 1.0f, amp));
     currentMode.store(juce::jlimit(0, 7, mode));
     
-    // Actualizar timestamp para fail-safe
-    lastUpdateTime.store(juce::Time::currentTimeMillis());
+    // Incrementar contador para fail-safe (RT-safe: no syscalls)
+    plateUpdateCounter.fetch_add(1, std::memory_order_relaxed);
 }
 
 //==============================================================================
 void PlateSynth::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)
 {
     // RT-SAFE: Verificar timeout y actualizar fade-out
-    updateFailSafe();
+    updateFailSafe(numSamples);
     
     // RT-SAFE: Actualizar parámetros periódicamente (cada N bloques)
     parameterUpdateCounter++;
@@ -128,7 +128,9 @@ void PlateSynth::reset()
     currentFreq.store(220.0f);
     currentAmp.store(0.0f);
     currentMode.store(0);
-    lastUpdateTime.store(0);
+    plateUpdateCounter.store(0, std::memory_order_relaxed);
+    lastSeenPlateUpdateCounter = 0;
+    samplesSinceLastPlateUpdate = 0;
 }
 
 //==============================================================================
@@ -229,33 +231,33 @@ void PlateSynth::updateFilterCoefficients()
 }
 
 //==============================================================================
-void PlateSynth::updateFailSafe()
+void PlateSynth::updateFailSafe(int numSamples)
 {
-    // Verificar timeout (RT-safe: leer atomic)
-    juce::int64 lastUpdate = lastUpdateTime.load();
-    juce::int64 currentTime = juce::Time::currentTimeMillis();
-    juce::int64 timeSinceUpdate = currentTime - lastUpdate;
+    // RT-SAFE: Verificar timeout usando contador de samples (no syscalls)
+    auto counter = plateUpdateCounter.load(std::memory_order_relaxed);
     
-    // Si no hay updates en TIMEOUT_MS, hacer fade-out
-    if (lastUpdate > 0 && timeSinceUpdate > TIMEOUT_MS)
+    if (counter != lastSeenPlateUpdateCounter)
     {
-        // Aplicar fade-out exponencial
-        fadeOutGain *= fadeOutDecay;
+        lastSeenPlateUpdateCounter = counter;
+        samplesSinceLastPlateUpdate = 0;
         
-        // Si fade-out está muy bajo, resetear completamente
-        if (fadeOutGain < 0.001f)
+        if (fadeOutGain < 1.0f)
         {
-            fadeOutGain = 0.0f;
-            // Opcional: resetear filtros para evitar resonancias residuales
-            // reset(); // Comentado para evitar clicks
+            fadeOutGain = juce::jmin(1.0f, fadeOutGain + (1.0f - fadeOutDecay));
         }
     }
     else
     {
-        // Si hay updates recientes, restaurar gain gradualmente
-        if (fadeOutGain < 1.0f)
+        samplesSinceLastPlateUpdate += numSamples;
+        int thresholdSamples = (int)(failSafeSeconds * currentSampleRate);
+        
+        if (samplesSinceLastPlateUpdate > thresholdSamples)
         {
-            fadeOutGain = juce::jmin(1.0f, fadeOutGain + (1.0f - fadeOutDecay));
+            fadeOutGain *= fadeOutDecay;
+            if (fadeOutGain < 0.001f)
+            {
+                fadeOutGain = 0.0f;
+            }
         }
     }
 }
