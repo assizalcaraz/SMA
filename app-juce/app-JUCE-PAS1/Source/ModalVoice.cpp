@@ -63,10 +63,12 @@ void ModalVoice::setParameters(float baseFreq, float amplitude, float damping,
     float dampingInverted = 1.0f - currentDamping;
     
     // Attack: golpes fuertes (alta energía) = attack muy breve, micro-hits = attack ligeramente más largo
-    energyScaledAttackMs = juce::jmap(currentAmplitude, 0.5f, 0.1f, 2.0f); // 0.1-0.5ms para golpes fuertes, hasta 2ms para micro-hits
+    // Mapear currentAmplitude desde [0.5, 0.1] hacia [0.1, 2.0] ms
+    energyScaledAttackMs = juce::jmap(currentAmplitude, 0.5f, 0.1f, 0.1f, 2.0f);
     
     // Decay: dependiente de damping (damping bajo = decay largo, damping alto = decay corto)
-    float decayTimeMs = juce::jmap(dampingInverted * dampingInverted, 10.0f, 500.0f, 0.0f, 1.0f);
+    // Mapear dampingInverted² desde [0.0, 1.0] hacia [10.0, 500.0] ms
+    float decayTimeMs = juce::jmap(dampingInverted * dampingInverted, 0.0f, 1.0f, 10.0f, 500.0f);
     energyScaledDecayMs = decayTimeMs;
     
     // Actualizar valores ADSR calculados

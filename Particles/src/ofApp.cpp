@@ -747,7 +747,7 @@ void ofApp::checkParticleCollisions() {
                 // Aplicar rebote físico (colisión elástica simple)
                 // Calcular velocidad relativa usando velocidades PRE-colisión
                 ofVec2f relVel = p1.vel_pre - p2.vel_pre;
-                ofVec2f normal = diff.normalized();
+                ofVec2f normal = diff.getNormalized();
                 
                 // Componente de velocidad relativa en dirección normal
                 float velAlongNormal = relVel.dot(normal);
