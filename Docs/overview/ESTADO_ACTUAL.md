@@ -4,6 +4,8 @@
 
 Este documento describe el estado actual de implementación del Sistema Modular Audiovisual, qué componentes están completados, en desarrollo o pendientes.
 
+**Rama de entrega ISTR/PAS1:** Esta rama (`entrega-istr-pas1`) es la base para empaquetar y entregar los módulos **Particles (ISTR)** y **app-juce (PAS1)** sin referencias a CALIB. OSC: un solo destino en puerto 9000; no hay mensajes `/test/*` ni grabación.
+
 ---
 
 ## Resumen Ejecutivo
