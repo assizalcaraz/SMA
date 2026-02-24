@@ -99,17 +99,6 @@ private:
     // Global state from /state messages (non-RT thread safe)
     std::atomic<float> globalPresence{1.0f};
     
-    // Modo test (v0.4)
-    bool testModeActive = false;
-    std::string testRunId;
-    int testSeed = 0;
-    std::unique_ptr<juce::AudioFormatWriter> audioWriter;
-    std::unique_ptr<juce::FileOutputStream> audioFileStream;
-    juce::AudioFormatManager audioFormatManager;
-    juce::AudioBuffer<float> recordingBuffer;
-    bool isRecording = false;
-    double currentSampleRate = 44100.0;
-    
     // Random number generator for pitch (thread-safe: solo se usa en UI thread)
     std::mt19937 pitchRandomGen;
     std::uniform_real_distribution<float> pitchRandomDist;
@@ -125,23 +114,6 @@ private:
     void mapOSCHitToEvent(const juce::OSCMessage& message);
     void updateOSCState(const juce::OSCMessage& message);
     void mapOSCPlateToEvent(const juce::OSCMessage& message);
-    
-    // Modo test handlers (v0.4)
-    void handleTestStart(const juce::OSCMessage& message);
-    void handleTestStop(const juce::OSCMessage& message);
-    void handleTestSeed(const juce::OSCMessage& message);
-    void handleTestBeep(const juce::OSCMessage& message);
-    
-    // Grabación de audio (v0.4)
-    void startAudioRecording(const juce::String& runId);
-    void stopAudioRecording();
-    void writeAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill);
-    
-    // Generación de beeps deterministas (v0.4)
-    void generateBeep(const juce::String& type); // "IN" o "OUT"
-    juce::AudioBuffer<float> beepBuffer;
-    int beepPosition = 0;
-    bool isPlayingBeep = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

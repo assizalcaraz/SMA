@@ -203,9 +203,6 @@ void ofApp::update(){
     // Actualizar rate limiter
     updateRateLimiter(dt);
     
-    // Procesar mensajes OSC recibidos (comandos /test/*)
-    processOSCMessages();
-    
     // Detectar y manejar colisiones
     checkCollisions();
     
@@ -1104,28 +1101,15 @@ void ofApp::dragEvent(ofDragInfo dragInfo){
 void ofApp::setupOSC() {
     // Configuración por defecto
     oscHost = "127.0.0.1";
-    oscPortJUCE = 9000;
-    oscPortCALIB = 9100;
-    oscPortControl = 9002;
+    oscPort = 9000;
     oscEnabled = true;
     stateSendInterval = 0.1f;  // 10 Hz
     stateSendTimer = 0.0f;
     
-    // Inicializar senders OSC (fan-out a JUCE y CALIB)
-    oscSenderJUCE.setup(oscHost, oscPortJUCE);
-    oscSenderCALIB.setup(oscHost, oscPortCALIB);
+    // Inicializar sender OSC
+    oscSender.setup(oscHost, oscPort);
     
-    // Inicializar receiver OSC para comandos /test/*
-    oscReceiver.setup(oscPortControl);
-    
-    // Inicializar modo test
-    testModeActive = false;
-    testRunId = "";
-    testSeed = 0;
-    
-    ofLogNotice("ofApp") << "OSC configurado: JUCE=" << oscHost << ":" << oscPortJUCE 
-                         << ", CALIB=" << oscHost << ":" << oscPortCALIB
-                         << ", Control receiver=" << oscPortControl;
+    ofLogNotice("ofApp") << "OSC configurado: " << oscHost << ":" << oscPort;
 }
 
 //--------------------------------------------------------------
@@ -1142,9 +1126,7 @@ void ofApp::sendHitEvent(const HitEvent& event) {
     msg.addFloatArg(event.energy);     // float energy (0..1)
     msg.addIntArg(event.surface);      // int32 surface (0=L, 1=R, 2=T, 3=B, -1=N/A)
     
-    // Fan-out: enviar a JUCE y CALIB simultáneamente
-    oscSenderJUCE.sendMessage(msg, false);
-    oscSenderCALIB.sendMessage(msg, false);
+    oscSender.sendMessage(msg, false);
     
     // Debug opcional (comentado para no saturar logs)
     // ofLogVerbose("ofApp") << "OSC /hit: id=" << event.id 
@@ -1172,9 +1154,7 @@ void ofApp::sendStateMessage() {
     msg.addFloatArg(calculateGesture()); // float gesture (0..1)
     msg.addFloatArg(calculatePresence()); // float presence (0..1)
     
-    // Fan-out: enviar a JUCE y CALIB simultáneamente
-    oscSenderJUCE.sendMessage(msg, false);
-    oscSenderCALIB.sendMessage(msg, false);
+    oscSender.sendMessage(msg, false);
     
     // Debug opcional
     // ofLogVerbose("ofApp") << "OSC /state: activity=" << activity;
@@ -1197,9 +1177,7 @@ void ofApp::sendPlateMessage() {
     msg.addFloatArg(amp);   // float amp (0.0-1.0)
     msg.addIntArg(mode);    // int32 mode (0-7)
     
-    // Fan-out: enviar a JUCE y CALIB simultáneamente
-    oscSenderJUCE.sendMessage(msg, false);
-    oscSenderCALIB.sendMessage(msg, false);
+    oscSender.sendMessage(msg, false);
     
     // Debug opcional
     // ofLogVerbose("ofApp") << "OSC /plate: freq=" << freq << " amp=" << amp << " mode=" << mode;
@@ -1240,55 +1218,3 @@ float ofApp::calculatePresence() {
     return mouse.active ? 1.0f : 0.0f;
 }
 
-//--------------------------------------------------------------
-void ofApp::processOSCMessages() {
-    // Procesar todos los mensajes OSC recibidos en el puerto de control (9002)
-    while (oscReceiver.hasWaitingMessages()) {
-        ofxOscMessage msg;
-        oscReceiver.getNextMessage(msg);
-        
-        std::string address = msg.getAddress();
-        
-        // Handler para /test/start [string run_id]
-        if (address == "/test/start") {
-            testModeActive = true;
-            
-            // Obtener run_id si está presente (opcional)
-            if (msg.getNumArgs() > 0 && msg.getArgType(0) == OFXOSC_TYPE_STRING) {
-                testRunId = msg.getArgAsString(0);
-                ofLogNotice("ofApp") << "Modo test iniciado: run_id=" << testRunId;
-            } else {
-                testRunId = "";
-                ofLogNotice("ofApp") << "Modo test iniciado (sin run_id)";
-            }
-            
-            // Resetear estado de simulación/estadísticas si corresponde
-            hits_discarded_rate = 0;
-            hits_discarded_cooldown = 0;
-            hits_this_second = 0;
-            time_accumulator = 0.0f;
-        }
-        // Handler para /test/stop
-        else if (address == "/test/stop") {
-            testModeActive = false;
-            testRunId = "";
-            ofLogNotice("ofApp") << "Modo test detenido";
-        }
-        // Handler para /test/seed int32 seed
-        else if (address == "/test/seed") {
-            if (msg.getNumArgs() > 0 && msg.getArgType(0) == OFXOSC_TYPE_INT32) {
-                testSeed = msg.getArgAsInt32(0);
-                
-                // Establecer semilla de generadores pseudoaleatorios
-                // Nota: ofRandom usa un generador global, pero podemos usar srand para reproducibilidad
-                // En openFrameworks, ofRandomSeed() establece la semilla global
-                ofRandomSeed(testSeed);
-                
-                // También resetear posiciones iniciales de partículas con esta semilla
-                // (esto se puede hacer en initializeParticles si se necesita reproducibilidad completa)
-                
-                ofLogNotice("ofApp") << "Semilla establecida: " << testSeed;
-            }
-        }
-    }
-}

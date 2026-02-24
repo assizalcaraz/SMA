@@ -127,9 +127,6 @@ void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRat
     // This function will be called when the audio device is started, or when
     // its settings (i.e. sample rate, block size, etc) are changed.
 
-    // Guardar sample rate para grabación y beeps
-    currentSampleRate = sampleRate;
-    
     // Preparar el motor de síntesis
     synthesisEngine.prepare(sampleRate);
     
@@ -145,44 +142,12 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
     // Limpiar el buffer primero
     bufferToFill.clearActiveBufferRegion();
     
-    // Reproducir beep si está activo (v0.4)
-    if (isPlayingBeep && beepBuffer.getNumSamples() > 0)
-    {
-        int numSamples = bufferToFill.numSamples;
-        int beepSamplesRemaining = beepBuffer.getNumSamples() - beepPosition;
-        int samplesToCopy = juce::jmin(numSamples, beepSamplesRemaining);
-        
-        if (samplesToCopy > 0 && bufferToFill.buffer != nullptr)
-        {
-            int numChannels = juce::jmin(bufferToFill.buffer->getNumChannels(), beepBuffer.getNumChannels());
-            for (int channel = 0; channel < numChannels; channel++)
-            {
-                bufferToFill.buffer->addFrom(channel, bufferToFill.startSample,
-                                            beepBuffer, channel, beepPosition, samplesToCopy);
-            }
-            
-            beepPosition += samplesToCopy;
-            
-            if (beepPosition >= beepBuffer.getNumSamples())
-            {
-                isPlayingBeep = false;
-                beepPosition = 0;
-            }
-        }
-    }
-    
     // Renderizar el motor de síntesis
     if (bufferToFill.buffer != nullptr)
     {
         synthesisEngine.renderNextBlock(*bufferToFill.buffer, 
                                          bufferToFill.startSample, 
                                          bufferToFill.numSamples);
-    }
-    
-    // Grabar audio si está en modo test (v0.4)
-    if (isRecording)
-    {
-        writeAudioBlock(bufferToFill);
     }
 }
 
@@ -474,22 +439,6 @@ void MainComponent::oscMessageReceived(const juce::OSCMessage& message)
     {
         mapOSCPlateToEvent(message);
     }
-    else if (address == "/test/start")
-    {
-        handleTestStart(message);
-    }
-    else if (address == "/test/stop")
-    {
-        handleTestStop(message);
-    }
-    else if (address == "/test/seed")
-    {
-        handleTestSeed(message);
-    }
-    else if (address == "/test/beep")
-    {
-        handleTestBeep(message);
-    }
     // Silently ignore unknown addresses (no crash, no log spam)
 }
 
@@ -630,222 +579,3 @@ void MainComponent::mapOSCPlateToEvent(const juce::OSCMessage& message)
     synthesisEngine.triggerPlateFromOSC(freq, amp, mode);
 }
 
-//==============================================================================
-// Modo test handlers (v0.4)
-//==============================================================================
-void MainComponent::handleTestStart(const juce::OSCMessage& message)
-{
-    testModeActive = true;
-    
-    // Resetear voces, colas y contadores
-    synthesisEngine.reset();
-    
-    // Obtener run_id si está presente
-    if (message.size() > 0 && message[0].isString())
-    {
-        testRunId = message[0].getString().toStdString();
-    }
-    else
-    {
-        testRunId = "";
-    }
-    
-    // Iniciar grabación de audio
-    startAudioRecording(juce::String(testRunId));
-    
-    juce::Logger::writeToLog("Modo test iniciado: run_id=" + juce::String(testRunId));
-}
-
-//==============================================================================
-void MainComponent::handleTestStop(const juce::OSCMessage& message)
-{
-    // Detener grabación de audio
-    stopAudioRecording();
-    
-    testModeActive = false;
-    testRunId = "";
-    
-    juce::Logger::writeToLog("Modo test detenido");
-}
-
-//==============================================================================
-void MainComponent::handleTestSeed(const juce::OSCMessage& message)
-{
-    if (message.size() > 0 && message[0].isInt32())
-    {
-        testSeed = message[0].getInt32();
-        
-        // Establecer semilla en generadores pseudoaleatorios
-        pitchRandomGen.seed(testSeed);
-        
-        // Nota: También se puede propagar a SynthesisEngine si tiene PRNGs internos
-        // Por ahora, solo establecemos la semilla del pitchRandomGen
-        
-        juce::Logger::writeToLog("Semilla establecida: " + juce::String(testSeed));
-    }
-}
-
-//==============================================================================
-void MainComponent::handleTestBeep(const juce::OSCMessage& message)
-{
-    if (message.size() > 0 && message[0].isString())
-    {
-        juce::String type = message[0].getString();
-        generateBeep(type);
-    }
-}
-
-//==============================================================================
-// Grabación de audio (v0.4)
-//==============================================================================
-void MainComponent::startAudioRecording(const juce::String& runId)
-{
-    if (isRecording)
-    {
-        stopAudioRecording();
-    }
-    
-    // Construir ruta: runs/<run_id>/audio.wav
-    juce::File runsDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-                         .getChildFile("UNA")
-                         .getChildFile("POSGRADO")
-                         .getChildFile("2025_2")
-                         .getChildFile("Sistema Modular Audiovisual")
-                         .getChildFile("maad-2-calib")
-                         .getChildFile("runs");
-    
-    if (!runsDir.exists())
-    {
-        runsDir.createDirectory();
-    }
-    
-    juce::File runDir = runsDir.getChildFile(runId);
-    if (!runDir.exists())
-    {
-        runDir.createDirectory();
-    }
-    
-    juce::File audioFile = runDir.getChildFile("audio.wav");
-    
-    // Configurar formato de audio (WAV, 16-bit, estéreo)
-    audioFormatManager.registerBasicFormats();
-    auto* format = audioFormatManager.findFormatForFileExtension("wav");
-    
-    if (format != nullptr)
-    {
-        audioFileStream = std::make_unique<juce::FileOutputStream>(audioFile);
-        
-        if (audioFileStream->openedOk())
-        {
-            juce::WavAudioFormat wavFormat;
-            auto* writer = wavFormat.createWriterFor(audioFileStream.get(), 
-                                                      currentSampleRate, 
-                                                      2, // estéreo
-                                                      16, // 16-bit
-                                                      {}, 
-                                                      0);
-            
-            if (writer != nullptr)
-            {
-                audioWriter.reset(writer);
-                isRecording = true;
-                
-                // Pre-allocar buffer de grabación (2 canales, tamaño razonable)
-                recordingBuffer.setSize(2, 512);
-                
-                juce::Logger::writeToLog("Grabación iniciada: " + audioFile.getFullPathName());
-            }
-        }
-    }
-}
-
-//==============================================================================
-void MainComponent::stopAudioRecording()
-{
-    if (isRecording && audioWriter != nullptr)
-    {
-        audioWriter->flush();
-        audioWriter.reset();
-        audioFileStream.reset();
-        isRecording = false;
-        
-        juce::Logger::writeToLog("Grabación detenida");
-    }
-}
-
-//==============================================================================
-void MainComponent::writeAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
-{
-    if (isRecording && audioWriter != nullptr)
-    {
-        // Copiar datos del buffer de audio al buffer de grabación
-        int numSamples = bufferToFill.numSamples;
-        int numChannels = juce::jmin(bufferToFill.buffer->getNumChannels(), 2);
-        
-        if (recordingBuffer.getNumSamples() < numSamples)
-        {
-            recordingBuffer.setSize(numChannels, numSamples, false, false, true);
-        }
-        
-        for (int channel = 0; channel < numChannels; channel++)
-        {
-            recordingBuffer.copyFrom(channel, 0, 
-                                    *bufferToFill.buffer, 
-                                    channel, 
-                                    bufferToFill.startSample, 
-                                    numSamples);
-        }
-        
-        // Escribir al archivo
-        audioWriter->writeFromAudioSampleBuffer(recordingBuffer, 0, numSamples);
-    }
-}
-
-//==============================================================================
-// Generación de beeps deterministas (v0.4)
-//==============================================================================
-void MainComponent::generateBeep(const juce::String& type)
-{
-    // Parámetros deterministas para beeps
-    float freq = 1000.0f; // 1 kHz
-    float duration = 0.1f; // 100ms
-    float amplitude = 0.8f;
-    
-    if (type == "OUT")
-    {
-        freq = 800.0f; // Frecuencia ligeramente más baja para OUT
-    }
-    
-    int numSamples = (int)(duration * currentSampleRate);
-    beepBuffer.setSize(2, numSamples, false, false, true);
-    beepBuffer.clear();
-    
-    // Generar tono sinusoidal
-    const float twoPi = 2.0f * juce::MathConstants<float>::pi;
-    for (int sample = 0; sample < numSamples; sample++)
-    {
-        float phase = (float)sample / (float)currentSampleRate * freq * twoPi;
-        float value = std::sin(phase) * amplitude;
-        
-        // Aplicar envolvente suave (fade in/out)
-        float env = 1.0f;
-        if (sample < numSamples / 10)
-        {
-            env = (float)sample / (float)(numSamples / 10); // Fade in
-        }
-        else if (sample > numSamples * 9 / 10)
-        {
-            env = 1.0f - ((float)(sample - numSamples * 9 / 10) / (float)(numSamples / 10)); // Fade out
-        }
-        
-        value *= env;
-        
-        beepBuffer.setSample(0, sample, value);
-        beepBuffer.setSample(1, sample, value);
-    }
-    
-    beepPosition = 0;
-    isPlayingBeep = true;
-    
-    juce::Logger::writeToLog("Beep generado: " + type);
-}
