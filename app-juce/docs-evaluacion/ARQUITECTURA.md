@@ -29,14 +29,14 @@ OSC (/hit, /state, /plate)  →  MainComponent  →  Cola lock-free (HitEvent)
 | Componente | Archivo | Rol |
 |------------|---------|-----|
 | **SynthesisEngine** | `Source/SynthesisEngine.h`, `.cpp` | Orquesta cola de eventos, VoiceManager, PlateSynth; aplica clipper y mide nivel. |
-| **VoiceManager** | `Source/VoiceManager.h`, `.cpp` | Pool de voces (4–12 activas, hasta 32 pre-allocadas), voice stealing, `renderNextBlock` sumando voces. |
+| **VoiceManager** | `Source/VoiceManager.h`, `.cpp` | Pool de voces (4–24 activas en M3, hasta 32 pre-allocadas), voice stealing con umbral STEAL_AMPLITUDE_THRESHOLD (M3), `renderNextBlock` sumando voces. |
 | **ModalVoice** | `Source/ModalVoice.h`, `.cpp` | Una voz modal: 6 modos resonantes (biquad), excitación 4–8 ms (Noise/Sine/Square/Saw/etc.), ADSR, sub-osc, formant opcional. |
 | **PlateSynth** | `Source/PlateSynth.h`, `.cpp` | Síntesis de placa: 6 modos, excitación por ruido, 8 modos de placa (0–7), fail-safe 2 s sin updates. |
 | **MainComponent** | `Source/MainComponent.h`, `.cpp` | UI, receptor OSC (puerto 9000), mapeo `/hit` → parámetros de síntesis y llamada a `triggerVoiceFromOSC`. |
 
 ## M2 - Multi-Event Fusion (20 ms, 4 cuadrantes)
 
-Con **fusión activa** (`enableFusionAggregation = true`, por defecto), los mensajes `/hit` no se encolan como eventos crudos: se acumulan en **HitAggregator** por cuadrante (4 quads) en ventanas de 20 ms. Un timer en el message thread cierra la ventana cada 20 ms; se generan hasta 4 **FusedHitSnapshot** (uno por cuadrante no vacío) que se escriben en la **cola lock-free de fused** (FUSED_QUEUE_SIZE 256). El **audio thread** drena esta cola en `processEventQueue` y llama a `triggerVoice` por cada snapshot. **Pan estereo:** constant-power (gL = sqrt(0.5*(1-pan)), gR = sqrt(0.5*(1+pan))) aplicado en la etapa de mezcla en VoiceManager. **Clase border vs p2p:** eventos predominantemente de borde (surface 0..3) reciben -3 dB en amplitud y -3 semitonos en baseFreq respecto a p2p (surface -1). Máximo ~200 eventos fusionados/s (4 por ventana × 50 ventanas/s). Rollback: `enableFusionAggregation = false` restaura el flujo de hits crudos.
+Con **fusión activa** (`enableFusionAggregation = true`, por defecto), los mensajes `/hit` no se encolan como eventos crudos: se acumulan en **HitAggregator** por cuadrante (4 quads) en ventanas de 20 ms. Un timer en el message thread cierra la ventana cada 20 ms; se generan hasta 4 **FusedHitSnapshot** (uno por cuadrante no vacío) que se escriben en la **cola lock-free de fused** (FUSED_QUEUE_SIZE 256). El **audio thread** drena esta cola en `processEventQueue` y llama a `triggerVoice` por cada snapshot. **Pan estereo:** constant-power (gL = sqrt(0.5*(1-pan)), gR = sqrt(0.5*(1+pan))) aplicado en la etapa de mezcla en VoiceManager. **Clase border vs p2p (una sola fuente de verdad en closeWindow):** eventos predominantemente de borde reciben -3 dB en amplitud, -3 semitonos en baseFreq y brightness × 0.92; el snapshot lleva `isBorder`; el engine usa los valores del snapshot sin volver a aplicar. Máximo ~200 eventos fusionados/s. Rollback: `enableFusionAggregation = false` restaura el flujo de hits crudos.
 
 ## Presupuesto de voces por cuadrante (R4)
 
@@ -49,7 +49,7 @@ Con **fusión activa** (`enableFusionAggregation = true`, por defecto), los mens
 | **EVENT_QUEUE_SIZE** | 128 | Tamaño de la cola de hits crudos. Si se llena, los nuevos hits se descartan (`hitsDiscarded`). |
 | **FUSED_QUEUE_SIZE** | 256 | Cola de eventos fusionados (agregación). Overflow: drop-new, `fusedHitsDiscardedQueue++`. |
 | **MAX_HITS_PER_BLOCK** | 32 | Máximo de eventos (crudos + fused) procesados por bloque de audio. Si hay >64 pendientes, se procesan solo 16 por bloque. |
-| **maxVoices** | 4–12 (configurable en UI) | Número de voces activas. Presupuesto por cuadrante (p. ej. 2 por quad) + pool compartido; voice stealing por menor amplitud residual o más antigua. |
+| **maxVoices** | 4–24 (M3, configurable en UI) | Número de voces activas. Presupuesto por cuadrante + pool compartido; voice stealing (M3) prefiere robar voces con amplitud residual ≤ 0.15, si no la de menor amplitud o más antigua. |
 | **Buffer de audio** | Recomendado 256–512 samples | Buffer muy grande (ej. 1024) implica menos llamadas a `renderNextBlock` por segundo y la cola se drena más lento. |
 
 ## Diagrama de bloques (simplificado)
@@ -74,7 +74,7 @@ Con **fusión activa** (`enableFusionAggregation = true`, por defecto), los mens
                          │                                       ▼
                          │                              ┌─────────────────┐
                          │                              │ VoiceManager   │
-                         │                              │ ModalVoice × 12│
+                         │                              │ ModalVoice × N (4–24)│
                          │                              └────────┬────────┘
                          │                                       │
                          │  plateVolume                          │ + PlateSynth (si bypass desactivado)
@@ -88,6 +88,23 @@ Con **fusión activa** (`enableFusionAggregation = true`, por defecto), los mens
 
 - **Hits received / triggered / discarded:** contadores atómicos; `hitsReceived` se incrementa al escribir en cola (si hay espacio), `hitsTriggered` al procesar en audio thread, `hitsDiscarded` cuando la cola está llena.
 - **Hit Coverage:** `hits_triggered / hits_received` (ratio). Objetivo típico de evaluación: ≥90% en escenario normal.
-- **M2 fusion (rama pas-m2-fusion):** raw (hits recibidos), fused produced / enqueued / dropped, coverage_raw_to_fused (fusedEnqueued/rawHitsReceived), queue_loss (fusedDroppedQueue/fusedProduced). Máx. ~200 fused/s.
+- **M2 fusion:** raw, fused produced/enqueued/dropped, coverage, queue_loss. Máx. ~200 fused/s.
+- **M3:** **Clip:** número de bloques de audio por segundo en los que al menos un sample fue recortado (UI: "Clip: X blocks/s"); interpretable para validar saturación.
 - **Output level:** RMS aproximado de la salida.
 - **Active voices:** número de voces activas en el VoiceManager.
+
+### Mapeo perceptual (M3)
+
+| Entrada | Efecto audible |
+|--------|-----------------|
+| Energy (impactIntensity) | Amplitud (principal): power sum en agregación. |
+| Energy / densidad (count) | Brightness, damping, waveform en snapshot (secundario). |
+| Border vs p2p | −3 dB, −3 semitones, brightness × 0.92 (M3). |
+
+### M2 Final State
+
+Fusión 20 ms / 4 cuadrantes activa; selección presupuestada; pan estereo constant-power. Cierre: [M2_CLOSE_REPORT.md](../../M2_CLOSE_REPORT.md).
+
+### M3 Final State
+
+Refino perceptual: un sonido base, border con −3 dB / −3 st / brightness reducido; maxVoices 4–24; voice stealing con umbral 0.15; UI simplificada (ocultar SubOsc/Pitch Range/Waveform con fusión ON); métrica Clip. Cierre: [M3_CLOSE_REPORT.md](../../M3_CLOSE_REPORT.md). Tag a preparar: `m3-perceptual-stable`.

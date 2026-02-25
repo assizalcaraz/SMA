@@ -36,7 +36,7 @@ Documento para que un revisor externo audite el módulo PAS del SMA: archivos re
 | Ruta | Propósito / funciones clave |
 |------|-----------------------------|
 | `app-juce/app-JUCE-PAS1/Source/SynthesisEngine.cpp` | `renderNextBlock`: processEventQueue, actualización periódica de parámetros globales (metalness, brightness, damping), voiceManager.renderNextBlock, plateSynth en buffer temporal, suma al buffer principal, clipper, updateOutputLevel. |
-| `app-juce/app-JUCE-PAS1/Source/VoiceManager.h`, `.cpp` | Pool de voces (`OwnedArray<ModalVoice>`), hasta MAX_VOICES_LIMIT 32 pre-asignadas; maxVoices 4–12 activas; `findAvailableVoice`, `findVoiceToSteal` (menor amplitud residual o más antigua); `triggerVoice`, `renderNextBlock` suma todas las voces activas. |
+| `app-juce/app-JUCE-PAS1/Source/VoiceManager.h`, `.cpp` | Pool de voces (`OwnedArray<ModalVoice>`), hasta MAX_VOICES_LIMIT 32 pre-asignadas; maxVoices 4–24 activas (M3); `findAvailableVoice`, `findVoiceToSteal` (M3: prefiere robar voces con amplitud residual ≤ STEAL_AMPLITUDE_THRESHOLD 0.15, si no la de menor amplitud/más antigua); `triggerVoice`, `renderNextBlock` suma todas las voces activas. |
 | `app-juce/app-JUCE-PAS1/Source/ModalVoice.h`, `.cpp` | Una voz modal: 6 modos (ResonantFilter biquad), excitación 4–8 ms (Noise/Sine/Square/Saw/Triangle/Click/Pulse), ADSR percusivo (Decay→Idle, sin sustain prolongado), sub-osc, formant opcional; `setParameters` / `setGlobalParametersOnly`, `trigger`, `renderNextSample`, `isActive`, `getResidualAmplitude`. |
 | `app-juce/app-JUCE-PAS1/Source/PlateSynth.h`, `.cpp` | 6 modos resonantes, excitación ruido; `triggerPlate(freq, amp, mode)` vía atómicos; fail-safe 2 s sin updates (fade-out); `renderNextBlock` escribe en buffer; parámetros 20–2000 Hz, amp 0–1, mode 0–7. |
 | `app-juce/app-JUCE-PAS1/Source/SynthParameters.h` | Struct de parámetros globales (maxVoices, metalness, brightness, damping, etc.); no usado directamente por el flujo OSC (el engine usa atómicos en SynthesisEngine). |
@@ -45,15 +45,15 @@ Documento para que un revisor externo audite el módulo PAS del SMA: archivos re
 
 | Ruta | Propósito |
 |------|-----------|
-| `app-juce/app-JUCE-PAS1/Source/MainComponent.cpp` | Sliders: Voices (4–12), Metalness, Brightness, Damping, SubOsc Mix, Pitch Range; ComboBox Waveform; Toggle Clipper; Botón Test Trigger. Controles de Plate eliminados (PlateSynth deshabilitado por defecto; `enablePlateSynth` permite reactivar). Labels: Output dB, Active Voices, Hit Coverage, Hits triggered/received/discarded, **M2 Fusion** (raw, fused produced/enqueued/dropped, coverage, queue loss), OSC status, OSC messages/s. `enableFusionAggregation` (default ON): M2 fusion 20 ms / 4 cuadrantes. |
+| `app-juce/app-JUCE-PAS1/Source/MainComponent.cpp` | **M3:** Sliders: Voices (4–24), Metalness, Brightness, Damping; con fusión ON se ocultan SubOsc Mix, Pitch Range y ComboBox Waveform (solo afectan ruta cruda). Toggle Clipper; Botón Test Trigger. Labels: Output dB, Active Voices, Hit Coverage, Hits, M2 Fusion, **Clip: X blocks/s** (bloques/segundo en los que hubo al menos un sample recortado), OSC status, OSC messages/s. Título "PAS-1 (M3 Perceptual)" y "Perceptual Mode" cuando `enableFusionAggregation` (default ON). |
 
 ### Diagnósticos y constantes
 
 | Ubicación | Detalle |
 |-----------|---------|
-| `SynthesisEngine.h` | `MAX_HITS_PER_BLOCK = 32`, `EVENT_QUEUE_SIZE = 128`, `FUSED_QUEUE_SIZE = 256`; `hitsReceived`, `hitsTriggered`, `hitsDiscarded`, `fusedHitsEnqueued`, `fusedHitsDiscardedQueue` atómicos; `getHitCoverageRatio()` = triggered/received. |
+| `SynthesisEngine.h` | `MAX_HITS_PER_BLOCK = 32`, `EVENT_QUEUE_SIZE = 128`, `FUSED_QUEUE_SIZE = 256`; `hitsReceived`, `hitsTriggered`, `hitsDiscarded`, `fusedHitsEnqueued`, `fusedHitsDiscardedQueue`, `blocksClippedCount` (M3: un incremento por bloque si algún sample recortado) atómicos; `getHitCoverageRatio()` = triggered/received; `getBlocksClippedCount()` (M3). |
 | `SynthesisEngine.cpp` processEventQueue | Fused queue drenada primero (pan constant-power por snapshot); luego cola cruda. Si `available > MAX_HITS_PER_BLOCK * 2` entonces `numToRead = MAX_HITS_PER_BLOCK / 2` (16). |
-| `HitAggregator`, `FusedHitSnapshot` | M2 fusion: ventana 20 ms, 4 cuadrantes; border -3 dB y -3 semitones; pan gL/gR constant-power. |
+| `HitAggregator`, `FusedHitSnapshot` | M2 fusion: ventana 20 ms, 4 cuadrantes; pan gL/gR constant-power. **Border (una sola fuente de verdad en closeWindow):** -3 dB, -3 semitones, brightness × 0.92; `isBorder` en snapshot. Engine usa valores del snapshot sin volver a aplicar border. |
 | — | No hay profiling hooks adicionales; comentarios DBG en prepareToPlay. |
 
 ---
@@ -108,7 +108,7 @@ Detalle completo en [OSC_SCHEMA.md](OSC_SCHEMA.md).
 ## E) Nota densidad/consistencia (dónde se pierden eventos)
 
 - **ISTR:** (1) Cooldown por partícula: hit_cooldown_ms (40 ms) → muchos hits de la misma partícula descartados. (2) Token bucket: max_hits_per_second (800), max_hits_per_frame (50) → si en un frame hay >50 validated o la tasa supera 800/s, el resto se descarta (hits_discarded_rate). (3) processPendingHits recorre pending_hits en orden; el orden de descarte es el de llegada (los que no caben en tokens/frame se pierden).
-- **PAS:** (1) Cola llena: si eventFifo no tiene espacio, triggerVoiceFromOSC descarta y hitsDiscarded++. (2) Por bloque de audio: processEventQueue lee como máximo MAX_HITS_PER_BLOCK (32) por bloque; si hay >64 pendientes, lee solo 16. Con 48 kHz y bloque 512, ~94 bloques/s → máximo ~3008 eventos/s teóricos si siempre 32/block; en práctica la cola se llena si ISTR envía más de lo que se drena. (3) Voice stealing: solo maxVoices (4–12) sonidos simultáneos; hits que llegan cuando no hay voz libre reutilizan la de menor amplitud residual (o más antigua) — no se “pierden” pero un hit reemplaza a otro. (4) **/plate:** con bypass de PlateSynth activo, los mensajes `/plate` se ignoran en ingestión (no se llama a triggerPlateFromOSC); no afectan la salida de audio.
+- **PAS:** (1) Cola llena: si eventFifo no tiene espacio, triggerVoiceFromOSC descarta y hitsDiscarded++. (2) Por bloque de audio: processEventQueue lee como máximo MAX_HITS_PER_BLOCK (32) por bloque; si hay >64 pendientes, lee solo 16. Con 48 kHz y bloque 512, ~94 bloques/s → máximo ~3008 eventos/s teóricos si siempre 32/block; en práctica la cola se llena si ISTR envía más de lo que se drena. (3) Voice stealing: solo maxVoices (4–24 en M3) sonidos simultáneos; hits que llegan cuando no hay voz libre reutilizan la de menor amplitud residual (o más antigua) — no se “pierden” pero un hit reemplaza a otro. (4) **/plate:** con bypass de PlateSynth activo, los mensajes `/plate` se ignoran en ingestión (no se llama a triggerPlateFromOSC); no afectan la salida de audio.
 - **Conclusión breve:** A alto número de partículas, ISTR genera muchos más eventos (border + p-p); el rate limiter (50/frame, 800/s) y el cooldown recortan; luego PAS puede recibir aún más de los que puede procesar por bloque (32 o 16) y/o cola 128, y además solo maxVoices sonidos simultáneos. La percepción de “menos golpes de los que se ven” es coherente con: throttling en ISTR + cola/capa por bloque + polyphony limitada en PAS.
 
 ### M2 - Multi-Event Fusion (20 ms, 4 cuadrantes)
@@ -162,9 +162,19 @@ getNextAudioBlock() [audio thread]
 | SynthesisEngine | FUSED_QUEUE_SIZE | 256 | Cola de FusedHitSnapshot (M2); overflow → fusedHitsDiscardedQueue |
 | SynthesisEngine | MAX_HITS_PER_BLOCK | 32 | Máx. eventos leídos por bloque de audio |
 | SynthesisEngine | (backlog) | available > 64 | Entonces numToRead = 16 |
-| VoiceManager | maxVoices | 4–12 | Voces activas; voice stealing si todas ocupadas |
+| VoiceManager | maxVoices | 4–24 (M3) | Voces activas; voice stealing con umbral STEAL_AMPLITUDE_THRESHOLD (M3) |
 | ISTR ofApp | max_hits_per_second | 800 | Token bucket rate |
 | ISTR ofApp | max_hits_per_frame | 50 | Máx. hits enviados por frame |
 | ISTR ofApp | hit_cooldown_ms | 40 | Cooldown por partícula entre hits |
 
 Con esto el revisor puede auditar RT-safety (cola lock-free, atómicos, sin alloc en audio thread), correctitud del mapeo (MainComponent + ModalVoice/PlateSynth) y consistencia visual/auditiva (puntos de descarte ISTR y PAS).
+
+---
+
+## M2 Closure – Status: Complete
+
+Milestone **M2 – Multi-Event Fusion** is formally closed. Documento de cierre: [M2_CLOSE_REPORT.md](M2_CLOSE_REPORT.md).
+
+## M3 Closure – Status: Complete
+
+Milestone **M3 – Perceptual & Timbral Refinement** is formally closed. Refino perceptual (un solo sonido base; border aplicado solo en HitAggregator::closeWindow: −3 dB, −3 st, brightness × 0.92), polyfonía 4–24, voice stealing con umbral, UI simplificada, métrica Clip en blocks/s. Documento de cierre: [M3_CLOSE_REPORT.md](M3_CLOSE_REPORT.md). Tag a preparar: `m3-perceptual-stable`.
