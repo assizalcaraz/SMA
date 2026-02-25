@@ -126,7 +126,7 @@ void VoiceManager::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSa
         if (!voice->isActive())
             continue;
         
-        // Renderizar todos los samples de esta voz de una vez (pan constant-power)
+        // Stereo mix: constant-power pan (gL = sqrt(0.5*(1-pan)), gR = sqrt(0.5*(1+pan))) per voice
         float gL = voiceGainL[i];
         float gR = voiceGainR[i];
         for (int sample = 0; sample < numSamples; sample++)

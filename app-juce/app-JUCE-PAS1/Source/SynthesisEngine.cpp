@@ -380,7 +380,7 @@ float SynthesisEngine::applyClipper(float sample)
 //==============================================================================
 void SynthesisEngine::processEventQueue()
 {
-    // 1) Drenar cola de eventos fusionados (pan aplicado en VoiceManager vía gainL/gainR)
+    // 1) M2 fused: constant-power stereo pan (gL/gR from snapshot) applied in VoiceManager mix stage
     int fusedAvailable = fusedFifo.getNumReady();
     int fusedToRead = juce::jmin(MAX_HITS_PER_BLOCK, fusedAvailable);
     if (fusedToRead > 0)
