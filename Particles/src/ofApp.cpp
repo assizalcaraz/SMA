@@ -51,7 +51,7 @@ void ofApp::setup(){
     burst = 1000.0f;
     max_hits_per_frame = 50;
     max_hits_border_per_second = 200.0f;   // Fase 4: borde más estricto que p2p
-    max_hits_pp_per_second = 600.0f;
+    max_hits_pp_per_second = 1500.0f;      // Temporal: 1500/s para evitar pp tokens cerca de cero y drops masivos
 
     // Inicializar rate limiter global (solo max_per_frame y hits_this_frame)
     rate_limiter.tokens = burst;
@@ -1007,10 +1007,10 @@ void ofApp::generateHitEvent(Particle& p, int surface) {
 
 //--------------------------------------------------------------
 void ofApp::updateRateLimiter(float dt) {
-    rate_limiter_border.tokens += rate_limiter_border.rate * dt;
-    rate_limiter_border.tokens = ofMin(rate_limiter_border.tokens, rate_limiter_border.burst);
-    rate_limiter_pp.tokens += rate_limiter_pp.rate * dt;
-    rate_limiter_pp.tokens = ofMin(rate_limiter_pp.tokens, rate_limiter_pp.burst);
+    // dt must be in seconds. Refill: tokens = min(burst, tokens + rate_per_sec * dt_sec)
+    float dt_sec = dt;
+    rate_limiter_border.tokens = ofMin(rate_limiter_border.burst, rate_limiter_border.tokens + rate_limiter_border.rate * dt_sec);
+    rate_limiter_pp.tokens = ofMin(rate_limiter_pp.burst, rate_limiter_pp.tokens + rate_limiter_pp.rate * dt_sec);
     rate_limiter.hits_this_frame = 0;
 }
 
@@ -1025,6 +1025,7 @@ bool ofApp::canEmitHit(const HitEvent& event) {
 
 //--------------------------------------------------------------
 void ofApp::consumeToken(const HitEvent& event) {
+    // Called only when event is accepted (validated). 1 token per event.
     bool is_border = event.surface >= 0;
     RateLimiter& bucket = is_border ? rate_limiter_border : rate_limiter_pp;
     bucket.tokens -= 1.0f;

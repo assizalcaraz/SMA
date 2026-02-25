@@ -63,7 +63,24 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
   - ✅ Configuración de host y puerto (127.0.0.1:9000)
   - ✅ Validación de mensajes antes de envío
 
-### 📋 Pendiente
+- **Mejoras ISTR (Audit Pack)**
+  - Puerta de reposo: no se generan hits cuando la velocidad normal de colisión es inferior a un umbral (evita “rest hits”).
+  - Energía: la contribución de distancia está ponderada por velocidad, evitando energía por acumulación de distancia en reposo.
+  - Calidad: suelo de energía perceptible (ENERGY_FLOOR), cooldown tras filtro de calidad; contadores de auditoría (candidatos, pending, validated, sent, descartes).
+  - Fairness: priorización por energía (nth_element/partial_sort) antes del rate limiting para reducir sesgo FIFO.
+  - Rate limiting: dos token buckets (borde y partícula-partícula) con presupuesto borde más estricto.
+  - Debug: fondo semi-opaco detrás del overlay para legibilidad.
+
+### Verificación (contadores y token buckets)
+
+- **Tiempo base del overlay**: Los contadores con etiqueta `(per_sec)` se resetean cada segundo; el resto son por frame o acumulados en el frame actual.
+- **this_frame**: Muestra `validated`, `sent`, `dropped` del frame actual. Con OSC ON, `validated` y `sent` deben coincidir; si no, revisar que `hits_sent_osc++` se llame solo en el bucle que invoca `sendHitEvent(event)`.
+- **Tokens**: `Tokens border` y `pp` son los tokens disponibles tras el refill (cada frame: `tokens = min(burst, tokens + rate*dt_sec)`). Si `pp` se mantiene cerca de cero, subir `max_hits_pp_per_second` (p. ej. 1500/s temporal) para reducir drops.
+- **Criterios de aceptación**:
+  - Partículas en reposo: `candidate_p2p` ~0 y `sent_osc` ~0.
+  - Alta densidad: `validated` y `sent_osc` (per_sec) cercanos; tokens pp no permanentemente ~0; `osc_msgs_dropped_by_rate_limiter` reducido respecto a candidatos.
+
+### Pendiente
 
 - **Fase 3b**: Integración MediaPipe (opcional/tardía)
 
