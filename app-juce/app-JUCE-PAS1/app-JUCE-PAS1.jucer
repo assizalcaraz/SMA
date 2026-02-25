@@ -17,6 +17,9 @@
       <FILE id="plateSynthH" name="PlateSynth.h" compile="0" resource="0" file="Source/PlateSynth.h"/>
       <FILE id="plateSynthCpp" name="PlateSynth.cpp" compile="1" resource="0" file="Source/PlateSynth.cpp"/>
       <FILE id="synthParametersH" name="SynthParameters.h" compile="0" resource="0" file="Source/SynthParameters.h"/>
+      <FILE id="fusedHitSnapshotH" name="FusedHitSnapshot.h" compile="0" resource="0" file="Source/FusedHitSnapshot.h"/>
+      <FILE id="hitAggregatorH" name="HitAggregator.h" compile="0" resource="0" file="Source/HitAggregator.h"/>
+      <FILE id="hitAggregatorCpp" name="HitAggregator.cpp" compile="1" resource="0" file="Source/HitAggregator.cpp"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

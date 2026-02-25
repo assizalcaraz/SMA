@@ -246,6 +246,12 @@ void SynthesisEngine::triggerTestVoice()
 }
 
 //==============================================================================
+void SynthesisEngine::incrementHitsReceived()
+{
+    hitsReceived.fetch_add(1, std::memory_order_relaxed);
+}
+
+//==============================================================================
 void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude, 
                                          float damping, float brightness, float metalness,
                                          ModalVoice::ExcitationWaveform waveform,
@@ -299,6 +305,9 @@ void SynthesisEngine::reset()
     hitsReceived.store(0, std::memory_order_relaxed);
     hitsTriggered.store(0, std::memory_order_relaxed);
     hitsDiscarded.store(0, std::memory_order_relaxed);
+    fusedHitsEnqueued.store(0, std::memory_order_relaxed);
+    fusedHitsDiscardedQueue.store(0, std::memory_order_relaxed);
+    fusedFifo.reset();
 }
 
 //==============================================================================
@@ -328,6 +337,32 @@ float SynthesisEngine::getHitCoverageRatio() const
 }
 
 //==============================================================================
+bool SynthesisEngine::enqueueFusedSnapshot(const FusedHitSnapshot& snapshot)
+{
+    int start1, size1, start2, size2;
+    fusedFifo.prepareToWrite(1, start1, size1, start2, size2);
+    if (size1 > 0)
+    {
+        fusedQueue[start1] = snapshot;
+        fusedFifo.finishedWrite(size1);
+        fusedHitsEnqueued.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+    fusedHitsDiscardedQueue.fetch_add(1, std::memory_order_relaxed);
+    return false;
+}
+
+int SynthesisEngine::getFusedHitsEnqueued() const
+{
+    return fusedHitsEnqueued.load(std::memory_order_relaxed);
+}
+
+int SynthesisEngine::getFusedHitsDiscardedQueue() const
+{
+    return fusedHitsDiscardedQueue.load(std::memory_order_relaxed);
+}
+
+//==============================================================================
 void SynthesisEngine::triggerPlateFromOSC(float freq, float amp, int mode)
 {
     plateSynth.triggerPlate(freq, amp, mode);
@@ -345,30 +380,50 @@ float SynthesisEngine::applyClipper(float sample)
 //==============================================================================
 void SynthesisEngine::processEventQueue()
 {
-    // Drain event queue (max MAX_HITS_PER_BLOCK per block; less if backlog is high)
+    // 1) Drenar cola de eventos fusionados (pan aplicado en VoiceManager vía gainL/gainR)
+    int fusedAvailable = fusedFifo.getNumReady();
+    int fusedToRead = juce::jmin(MAX_HITS_PER_BLOCK, fusedAvailable);
+    if (fusedToRead > 0)
+    {
+        int start1, size1, start2, size2;
+        fusedFifo.prepareToRead(fusedToRead, start1, size1, start2, size2);
+        for (int i = 0; i < size1; i++)
+        {
+            const FusedHitSnapshot& s = fusedQueue[start1 + i];
+            auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
+                                     wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
+            hitsTriggered.fetch_add(1, std::memory_order_relaxed);
+        }
+        for (int i = 0; i < size2; i++)
+        {
+            const FusedHitSnapshot& s = fusedQueue[start2 + i];
+            auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
+                                     wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
+            hitsTriggered.fetch_add(1, std::memory_order_relaxed);
+        }
+        fusedFifo.finishedRead(size1 + size2);
+    }
+    
+    // 2) Drenar cola de hits crudos (mono: gainL/gainR = 1)
     int available = eventFifo.getNumReady();
     if (available == 0)
         return;
     
-    // Reducir procesamiento si hay muchos eventos pendientes (protección contra sobrecarga)
     int numToRead = juce::jmin(MAX_HITS_PER_BLOCK, available);
-    
-    // Si hay demasiados eventos acumulados, procesar menos para evitar sobrecarga
     if (available > MAX_HITS_PER_BLOCK * 2)
-    {
-        numToRead = MAX_HITS_PER_BLOCK / 2; // Procesar la mitad para dar tiempo al audio thread
-    }
+        numToRead = MAX_HITS_PER_BLOCK / 2;
     
     int start1, size1, start2, size2;
     eventFifo.prepareToRead(numToRead, start1, size1, start2, size2);
     
-    // Procesar primera sección
     for (int i = 0; i < size1; i++)
     {
         const HitEvent& event = eventQueue[start1 + i];
-        voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
+        voiceManager.triggerVoice(event.baseFreq, event.amplitude,
                                    event.damping, event.brightness, event.metalness,
-                                   event.waveform, event.subOscMix);
+                                   event.waveform, event.subOscMix, 1.0f, 1.0f);
         hitsTriggered.fetch_add(1, std::memory_order_relaxed);
     }
     for (int i = 0; i < size2; i++)
@@ -376,7 +431,7 @@ void SynthesisEngine::processEventQueue()
         const HitEvent& event = eventQueue[start2 + i];
         voiceManager.triggerVoice(event.baseFreq, event.amplitude,
                                    event.damping, event.brightness, event.metalness,
-                                   event.waveform, event.subOscMix);
+                                   event.waveform, event.subOscMix, 1.0f, 1.0f);
         hitsTriggered.fetch_add(1, std::memory_order_relaxed);
     }
     

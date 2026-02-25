@@ -12,7 +12,6 @@ MainComponent::MainComponent()
     setupSlider(dampingSlider, dampingLabel, "Damping", 0.0, 1.0, 0.5); // Tiempo de decaimiento (0=corto, 1=largo)
     setupSlider(subOscMixSlider, subOscMixLabel, "SubOsc Mix", 0.0, 1.0, 0.0);
     setupSlider(pitchRangeSlider, pitchRangeLabel, "Pitch Range", 0.0, 1.0, 0.5); // Rango de variación de pitch random (0=sin variación, 1=máxima variación)
-    setupSlider(plateVolumeSlider, plateVolumeLabel, "Plate Volume", 0.0, 1.0, 1.0);
     
     // Waveform selector
     waveformComboBox.addItem("Noise", 1);
@@ -90,9 +89,12 @@ MainComponent::MainComponent()
     lastOscActivityTimestamp = juce::Time::currentTimeMillis();
     lastOscCountUpdateTime = juce::Time::currentTimeMillis();
     
-    // Make sure you set the size of the component after
-    // you add any child components.
-    setSize (800, 600);
+    aggregatorTimer.owner = this;
+    if (enableAggregation)
+        aggregatorTimer.startTimer(HitAggregator::WINDOW_MS);
+    
+    // Tamaño por defecto: ancho reducido (columna derecha = Clipper + debug en vertical)
+    setSize (540, 600);
         
     // Iniciar timer para actualizar indicadores
     startTimer(50); // Actualizar cada 50ms
@@ -179,15 +181,27 @@ void MainComponent::resized()
     auto area = getLocalBounds();
     area.removeFromTop(50); // Espacio para título
     
-    const int sliderHeight = 60;
-    const int margin = 10;
-    const int labelWidth = 100;
-    const int sliderWidth = 200;
+    const int sliderHeight = 56;
+    const int margin = 8;
+    const int labelWidth = 92;
     
-    // Primera columna de sliders
-    auto leftColumn = area.removeFromLeft(350);
+    // Columna derecha: Clipper + Test + todos los textos de debug alineados verticalmente (ancho fijo)
+    const int rightColumnWidth = 220;
+    auto rightColumn = area.removeFromRight(rightColumnWidth);
     
-    // Layout mejorado: label a la izquierda, slider a la derecha
+    const int debugRowHeight = 22;
+    limiterToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    testTriggerButton.setBounds(rightColumn.removeFromTop(debugRowHeight + 4).reduced(margin, 2));
+    rightColumn.removeFromTop(4); // separación
+    outputLevelLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    activeVoicesLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    hitsCoverageLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    hitsStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    oscStatusLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    oscMessageCountLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    
+    // Columna izquierda: sliders (ocupa el resto del ancho)
+    auto leftColumn = area.reduced(0, 0);
     auto voicesArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     voicesLabel.setBounds(voicesArea.removeFromLeft(labelWidth));
     voicesSlider.setBounds(voicesArea);
@@ -204,42 +218,17 @@ void MainComponent::resized()
     dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
     dampingSlider.setBounds(dampingArea);
     
-    // Waveform combo box
     auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
     waveformComboBox.setBounds(waveformArea);
     
-    // SubOsc Mix slider
     auto subOscArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
     subOscMixSlider.setBounds(subOscArea);
     
-    // Pitch Range slider
     auto pitchRangeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     pitchRangeLabel.setBounds(pitchRangeArea.removeFromLeft(labelWidth));
     pitchRangeSlider.setBounds(pitchRangeArea);
-    
-    // Plate Volume slider
-    auto plateVolumeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    plateVolumeLabel.setBounds(plateVolumeArea.removeFromLeft(labelWidth));
-    plateVolumeSlider.setBounds(plateVolumeArea);
-    
-    // Segunda columna de controles
-    auto rightColumn = area.removeFromRight(350);
-    
-    limiterToggle.setBounds(rightColumn.removeFromTop(30).reduced(margin));
-    
-    // Botón de test trigger
-    testTriggerButton.setBounds(rightColumn.removeFromTop(40).reduced(margin));
-    
-    // Indicadores en la parte inferior
-    auto bottomArea = area;
-    outputLevelLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    activeVoicesLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    hitsCoverageLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    hitsStatsLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    oscStatusLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    oscMessageCountLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
 }
 
 //==============================================================================
@@ -268,39 +257,6 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     else if (slider == &pitchRangeSlider)
     {
         synthesisEngine.setPitchRange((float)pitchRangeSlider.getValue());
-    }
-    else if (slider == &plateVolumeSlider)
-    {
-        // Mapeo exponencial muy suave: slider 0.01 → volumen 0.1 (10% en lugar de 50%)
-        // slider 0.0 → volumen 0.0, slider 1.0 → volumen 1.0
-        // Mapeo ajustado para balancear con audio de partículas (plate suena más fuerte)
-        float sliderValue = (float)plateVolumeSlider.getValue();
-        float volume;
-        
-        if (sliderValue <= 0.0f)
-        {
-            volume = 0.0f;
-        }
-        else if (sliderValue <= 0.01f)
-        {
-            // Mapeo exponencial muy suave de 0.0-0.01 a 0.0-0.05 (5% máximo)
-            // Usar exponente alto para curva muy gradual al inicio
-            float normalized = sliderValue / 0.01f; // 0.0 a 1.0
-            // Curva muy suave: exponente 0.8 hace que crezca muy gradualmente
-            // Ejemplo: sliderValue=0.003 → normalized=0.3 → pow(0.3, 0.8)≈0.38 → volume≈0.019 (1.9%)
-            float curve = std::pow(normalized, 0.8f); // Curva muy suave
-            volume = curve * 0.05f; // Máximo 5% en sliderValue = 0.01 (reducido para mejor balance)
-        }
-        else
-        {
-            // Mapeo exponencial de 0.01-1.0 a 0.05-1.0 (más gradual que lineal)
-            float normalized = (sliderValue - 0.01f) / 0.99f; // 0.0 a 1.0
-            // Usar curva exponencial suave para el resto del rango también
-            float curve = std::pow(normalized, 0.7f); // Curva suave
-            volume = 0.05f + curve * 0.95f; // De 0.05 a 1.0
-        }
-        
-        synthesisEngine.setPlateVolume(volume);
     }
 }
 
@@ -434,11 +390,33 @@ void MainComponent::oscMessageReceived(const juce::OSCMessage& message)
     {
         updateOSCState(message);
     }
-    else if (address == "/plate")
+    else if (address == "/plate" && enablePlateSynth)
     {
         mapOSCPlateToEvent(message);
     }
     // Silently ignore unknown addresses (no crash, no log spam)
+}
+
+//==============================================================================
+void AggregatorTimer::timerCallback()
+{
+    if (owner)
+        owner->flushAggregatorWindow();
+}
+
+//==============================================================================
+void MainComponent::flushAggregatorWindow()
+{
+    FusedHitSnapshot snaps[HitAggregator::NUM_QUADRANTS];
+    int n = hitAggregator.closeWindow(snaps, HitAggregator::NUM_QUADRANTS);
+    float metalness = synthesisEngine.getMetalness();
+    float subOscMix = synthesisEngine.getSubOscMix();
+    for (int i = 0; i < n; i++)
+    {
+        snaps[i].metalness = metalness;
+        snaps[i].subOscMix = subOscMix;
+        synthesisEngine.enqueueFusedSnapshot(snaps[i]);
+    }
 }
 
 //==============================================================================
@@ -447,79 +425,54 @@ void MainComponent::mapOSCHitToEvent(const juce::OSCMessage& message)
     // Validate message format: /hit id(int32) x(float) y(float) energy(float) surface(int32)
     if (message.size() != 5)
     {
-        // Malformed message - silently discard
         return;
     }
     
-    // Extract and validate arguments
     if (!message[0].isInt32() || !message[1].isFloat32() || !message[2].isFloat32() || 
         !message[3].isFloat32() || !message[4].isInt32())
     {
-        // Wrong argument types - silently discard
         return;
     }
     
-    // Extract values and clamp to valid ranges
     int id = message[0].getInt32();
     float x = juce::jlimit(0.0f, 1.0f, message[1].getFloat32());
     float y = juce::jlimit(0.0f, 1.0f, message[2].getFloat32());
     float energy = juce::jlimit(0.0f, 1.0f, message[3].getFloat32());
     int surface = message[4].getInt32();
     
-    // Map parameters according to "Coin Cascade" design
+    if (enableAggregation)
+    {
+        synthesisEngine.incrementHitsReceived();
+        hitAggregator.addHit(x, y, energy, surface);
+        (void)id;
+        return;
+    }
     
-    // Amplitude: amp = energy^1.5 (micro-collisions → very low but audible)
+    // Modo sin agregación: mapeo directo como antes
     float amplitude = std::pow(energy, 1.5f);
-    
-    // Brightness: lerp(0.3, 1.0, energy)
     float brightness = 0.3f + (energy * 0.7f);
-    
-    // Pan: pan = (x * 2.0) - 1.0 (-1 = left, +1 = right)
-    // Note: Pan will be applied in VoiceManager if stereo support is added
-    // For now, we'll store it but not use it (mono output)
-    float pan = (x * 2.0f) - 1.0f;
-    (void)pan; // Suppress unused variable warning
-    
-    // Damping: lerp(0.2, 0.8, 1.0 - y)
-    // Upper screen → drier (lower damping), Lower screen → longer decay (higher damping)
     float damping = 0.2f + ((1.0f - y) * 0.6f);
-    
-    // Base frequency: Random dentro de rango controlado por slider
-    // Frecuencia base: 300 Hz (centro del rango metálico)
-    // Rango de variación controlado por pitchRange slider (0.0 = sin variación, 1.0 = ±200 Hz)
     float pitchRange = synthesisEngine.getPitchRange();
-    float centerFreq = 300.0f; // Frecuencia central (Hz)
-    float maxVariation = 200.0f; // Variación máxima (±200 Hz)
-    
-    // Generar random pitch: centerFreq ± (pitchRange * maxVariation * random)
-    float randomValue = pitchRandomDist(pitchRandomGen); // 0.0 a 1.0
-    float variation = (randomValue * 2.0f - 1.0f) * pitchRange * maxVariation; // -maxVariation a +maxVariation
-    float baseFreq = centerFreq + variation;
-    baseFreq = juce::jlimit(100.0f, 800.0f, baseFreq); // Clamp a rango seguro
-    
-    // Metalness: usar valor global (unificado para todos los eventos)
-    // No modificar por surface para que bordes y colisiones suenen igual
+    float centerFreq = 300.0f;
+    float maxVariation = 200.0f;
+    float randomValue = pitchRandomDist(pitchRandomGen);
+    float variation = (randomValue * 2.0f - 1.0f) * pitchRange * maxVariation;
+    float baseFreq = juce::jlimit(100.0f, 800.0f, centerFreq + variation);
     float metalness = synthesisEngine.getMetalness();
     
-    // Mapeo adaptativo de energy → waveform (Fase 4: Excitación Adaptativa)
-    // Alta energía → formas agresivas, baja energía → formas suaves
     ModalVoice::ExcitationWaveform waveform;
     if (energy > 0.7f)
-        waveform = ModalVoice::ExcitationWaveform::Square; // Alta energía → agresivo
+        waveform = ModalVoice::ExcitationWaveform::Square;
     else if (energy > 0.4f)
-        waveform = ModalVoice::ExcitationWaveform::Saw; // Media-alta → brillante
+        waveform = ModalVoice::ExcitationWaveform::Saw;
     else if (energy > 0.2f)
-        waveform = ModalVoice::ExcitationWaveform::Noise; // Media-baja → ruido
+        waveform = ModalVoice::ExcitationWaveform::Noise;
     else
-        waveform = ModalVoice::ExcitationWaveform::Sine; // Baja energía → suave
+        waveform = ModalVoice::ExcitationWaveform::Sine;
     
-    // Obtener subOscMix global del engine
     float subOscMix = synthesisEngine.getSubOscMix();
-    
-    // Trigger voice through RT-safe queue
     synthesisEngine.triggerVoiceFromOSC(baseFreq, amplitude, damping, brightness, metalness, waveform, subOscMix);
-    
-    (void)id; // Suppress unused variable warning (id is for future use)
+    (void)id;
 }
 
 //==============================================================================

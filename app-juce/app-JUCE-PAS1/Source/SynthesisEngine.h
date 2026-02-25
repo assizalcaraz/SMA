@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include "VoiceManager.h"
 #include "PlateSynth.h"
+#include "FusedHitSnapshot.h"
 
 //==============================================================================
 /**
@@ -63,6 +64,9 @@ public:
     /** Trigger manual de una voz (para testing sin OSC) - RT-safe: escribe a cola */
     void triggerTestVoice();
 
+    /** Incrementa hits recibidos (usado cuando agregación está activa: contar raw antes de agregar). */
+    void incrementHitsReceived();
+
     /** Trigger voz desde OSC - RT-safe: escribe a cola lock-free */
     void triggerVoiceFromOSC(float baseFreq, float amplitude, 
                              float damping, float brightness, float metalness,
@@ -84,6 +88,13 @@ public:
     int getHitsDiscarded() const;
     float getHitCoverageRatio() const; // hits_triggered / hits_received
 
+    /** Encola un evento fusionado (message thread). Returns true si se encoló; false si cola llena (drop-new). */
+    bool enqueueFusedSnapshot(const FusedHitSnapshot& snapshot);
+
+    /** Estadísticas de agregación (thread-safe) */
+    int getFusedHitsEnqueued() const;
+    int getFusedHitsDiscardedQueue() const;
+
     /** Resetea el motor completamente */
     void reset();
 
@@ -91,6 +102,7 @@ private:
     //==============================================================================
     static constexpr int MAX_HITS_PER_BLOCK = 32; // Límite de eventos procesados por bloque (aumentado para más eventos)
     static constexpr int EVENT_QUEUE_SIZE = 128;  // Tamaño de la cola de eventos (aumentado para evitar descartes)
+    static constexpr int FUSED_QUEUE_SIZE = 256; // Cola de eventos fusionados (hasta 4 por ventana 20 ms)
     
     VoiceManager voiceManager;
     PlateSynth plateSynth;
@@ -116,6 +128,13 @@ private:
     // Cola lock-free para eventos (OSC y test trigger)
     juce::AbstractFifo eventFifo{EVENT_QUEUE_SIZE};
     HitEvent eventQueue[EVENT_QUEUE_SIZE];
+    
+    // Cola lock-free para eventos fusionados (agregación por cuadrante/ventana)
+    juce::AbstractFifo fusedFifo{FUSED_QUEUE_SIZE};
+    FusedHitSnapshot fusedQueue[FUSED_QUEUE_SIZE];
+    
+    std::atomic<int> fusedHitsEnqueued{0};
+    std::atomic<int> fusedHitsDiscardedQueue{0};
     
     // Clipper (soft clip por sample, sin envelope follower)
     float clipperThreshold = 0.95f;

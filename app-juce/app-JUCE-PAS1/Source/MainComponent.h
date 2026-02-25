@@ -2,7 +2,16 @@
 
 #include <JuceHeader.h>
 #include "SynthesisEngine.h"
+#include "HitAggregator.h"
 #include <random>
+
+class MainComponent;
+
+struct AggregatorTimer : juce::Timer
+{
+    MainComponent* owner = nullptr;
+    void timerCallback() override;
+};
 
 //==============================================================================
 /*
@@ -36,6 +45,9 @@ public:
     void comboBoxChanged (juce::ComboBox* comboBox) override;
     void timerCallback() override;
 
+    /** Llamado por AggregatorTimer cada 20 ms para cerrar ventana y encolar FusedHitSnapshot. */
+    void flushAggregatorWindow();
+
 private:
     //==============================================================================
     SynthesisEngine synthesisEngine;
@@ -62,9 +74,6 @@ private:
     juce::Slider pitchRangeSlider;
     juce::Label pitchRangeLabel;
     
-    juce::Slider plateVolumeSlider;
-    juce::Label plateVolumeLabel;
-    
     juce::ToggleButton limiterToggle;
     juce::Label limiterLabel;
     
@@ -84,6 +93,15 @@ private:
     juce::int64 lastOscActivityTimestamp = 0;
     std::atomic<int> oscMessageCountAccumulator{0};
     juce::int64 lastOscCountUpdateTime = 0;
+    
+    /** Si false (default), PAS ignora /plate y PlateSynth no recibe triggers. */
+    bool enablePlateSynth = false;
+    
+    /** Si true (default v1), los /hit se agregan por cuadrante/ventana 20 ms y se encolan como FusedHitSnapshot. */
+    bool enableAggregation = true;
+    
+    HitAggregator hitAggregator;
+    AggregatorTimer aggregatorTimer;
     
     // Global state from /state messages (non-RT thread safe)
     std::atomic<float> globalPresence{1.0f};
