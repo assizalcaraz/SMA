@@ -47,7 +47,8 @@ void ofApp::setup(){
     energy_b = 0.3f;         // Peso de distancia en energía (0.1-0.5)
     
     // Presupuesto por frame (selección por energía antes del token bucket)
-    target_hits_per_second = 800.0f;
+    // Temporary until PAS implements 20ms/4-quadrant fusion.
+    target_hits_per_second = 500.0f;
 
     // Parámetros de rate limiting
     max_hits_per_second = 800.0f;
