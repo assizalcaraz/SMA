@@ -84,6 +84,9 @@ private:
     juce::Label hitsCoverageLabel;
     juce::Label hitsStatsLabel;
     juce::Label m2FusionStatsLabel;
+    juce::Label clipperHitCountLabel; // M3: "Clip: X blocks/s"
+    int lastBlocksClippedCount = 0;
+    juce::int64 lastClipUpdateTime = 0;
     
     /** Fused snapshots produced by M2 aggregator (closeWindow) since start. */
     std::atomic<int> fusedProduced{0};

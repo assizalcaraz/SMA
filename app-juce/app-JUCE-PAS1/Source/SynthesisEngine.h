@@ -95,6 +95,9 @@ public:
     int getFusedHitsEnqueued() const;
     int getFusedHitsDiscardedQueue() const;
 
+    /** M3: Número de bloques de audio en los que al menos un sample fue recortado (desde último reset). Thread-safe. */
+    int getBlocksClippedCount() const;
+
     /** Resetea el motor completamente */
     void reset();
 
@@ -138,6 +141,7 @@ private:
     
     // Clipper (soft clip por sample, sin envelope follower)
     float clipperThreshold = 0.95f;
+    std::atomic<int> blocksClippedCount{0}; // M3: bloques en los que hubo al menos un sample recortado
     
     // Medición de nivel de salida
     float outputLevel = 0.0f;

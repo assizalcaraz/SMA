@@ -102,8 +102,9 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         }
     }
     
-    // Aplicar procesamiento master (solo clipper)
+    // Aplicar procesamiento master (solo clipper); M3: contar bloques con clipping (una vez por bloque)
     bool currentLimiterEnabled = limiterEnabled.load();
+    bool blockHadClip = false;
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
         float* channelData = buffer.getWritePointer(channel, startSample);
@@ -111,24 +112,24 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         {
             float sampleValue = channelData[sample];
             if (currentLimiterEnabled)
-                sampleValue = applyClipper(sampleValue);
-            
-            channelData[sample] = sampleValue;
-            
-            // Actualizar nivel de salida (usar primer canal)
-            if (channel == 0)
             {
-                updateOutputLevel(sampleValue);
+                if (sampleValue > clipperThreshold || sampleValue < -clipperThreshold)
+                    blockHadClip = true;
+                sampleValue = applyClipper(sampleValue);
             }
+            channelData[sample] = sampleValue;
+            if (channel == 0)
+                updateOutputLevel(sampleValue);
         }
     }
-    
+    if (blockHadClip)
+        blocksClippedCount.fetch_add(1, std::memory_order_relaxed);
 }
 
 //==============================================================================
 void SynthesisEngine::setMaxVoices(int newMaxVoices)
 {
-    int limitedVoices = juce::jlimit(4, 12, newMaxVoices);
+    int limitedVoices = juce::jlimit(4, 24, newMaxVoices);
     maxVoices.store(limitedVoices);
     
     // Actualizar VoiceManager (esto es seguro porque se llama desde UI thread)
@@ -307,6 +308,7 @@ void SynthesisEngine::reset()
     hitsDiscarded.store(0, std::memory_order_relaxed);
     fusedHitsEnqueued.store(0, std::memory_order_relaxed);
     fusedHitsDiscardedQueue.store(0, std::memory_order_relaxed);
+    blocksClippedCount.store(0, std::memory_order_relaxed);
     fusedFifo.reset();
 }
 
@@ -362,6 +364,11 @@ int SynthesisEngine::getFusedHitsDiscardedQueue() const
     return fusedHitsDiscardedQueue.load(std::memory_order_relaxed);
 }
 
+int SynthesisEngine::getBlocksClippedCount() const
+{
+    return blocksClippedCount.load(std::memory_order_relaxed);
+}
+
 //==============================================================================
 void SynthesisEngine::triggerPlateFromOSC(float freq, float amp, int mode)
 {
@@ -391,7 +398,8 @@ void SynthesisEngine::processEventQueue()
         {
             const FusedHitSnapshot& s = fusedQueue[start1 + i];
             auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
-            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
+            float br = s.isBorder ? s.brightness * 0.92f : s.brightness; // M3: border slightly darker
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, br, s.metalness,
                                      wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
             hitsTriggered.fetch_add(1, std::memory_order_relaxed);
         }
@@ -399,7 +407,8 @@ void SynthesisEngine::processEventQueue()
         {
             const FusedHitSnapshot& s = fusedQueue[start2 + i];
             auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
-            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
+            float br = s.isBorder ? s.brightness * 0.92f : s.brightness; // M3: border slightly darker
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, br, s.metalness,
                                      wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
             hitsTriggered.fetch_add(1, std::memory_order_relaxed);
         }

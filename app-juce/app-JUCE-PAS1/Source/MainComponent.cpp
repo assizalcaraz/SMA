@@ -7,7 +7,7 @@ MainComponent::MainComponent()
     : pitchRandomGen(std::random_device{}()), pitchRandomDist(0.0f, 1.0f)
 {
     // Configurar sliders y labels
-    setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
+    setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 24.0, 8.0, 1.0); // M3: 4-24 para mayor polyfonía perceptual
     setupSlider(metalnessSlider, metalnessLabel, "Metalness", 0.0, 1.0, 0.5); // Dispersión de modos inarmónicos
     setupSlider(brightnessSlider, brightnessLabel, "Brightness", 0.0, 1.0, 0.5); // Tilt espectral (0=oscuro, 1=brillante)
     setupSlider(dampingSlider, dampingLabel, "Damping", 0.0, 1.0, 0.5); // Tiempo de decaimiento (0=corto, 1=largo)
@@ -67,6 +67,10 @@ MainComponent::MainComponent()
     m2FusionStatsLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(&m2FusionStatsLabel);
     
+    clipperHitCountLabel.setText("Clip: 0 blocks/s", juce::dontSendNotification);
+    clipperHitCountLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&clipperHitCountLabel);
+    
     // OSC Receiver setup
     oscStatusLabel.setText("OSC: Disconnected", juce::dontSendNotification);
     oscStatusLabel.setJustificationType(juce::Justification::centred);
@@ -93,6 +97,7 @@ MainComponent::MainComponent()
     
     lastOscActivityTimestamp = juce::Time::currentTimeMillis();
     lastOscCountUpdateTime = juce::Time::currentTimeMillis();
+    lastClipUpdateTime = juce::Time::currentTimeMillis();
     
     aggregatorTimer.owner = this;
     if (enableFusionAggregation)
@@ -173,12 +178,17 @@ void MainComponent::paint (juce::Graphics& g)
     // (Our component is opaque, so we must completely fill the background with a solid colour)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
 
-    // Título
+    auto topArea = getLocalBounds().removeFromTop(50);
     g.setColour (juce::Colours::white);
     g.setFont (24.0f);
-    g.drawText ("PAS-1-SYNTH", 
-                getLocalBounds().removeFromTop(40).reduced(10),
-                juce::Justification::centred, false);
+    juce::String title = enableFusionAggregation ? "PAS-1 (M3 Perceptual)" : "PAS-1-SYNTH";
+    g.drawText (title, topArea.removeFromTop(28).reduced(10), juce::Justification::centred, false);
+    if (enableFusionAggregation)
+    {
+        g.setFont (12.0f);
+        g.setColour (juce::Colours::lightgrey);
+        g.drawText ("Perceptual Mode", topArea.reduced(10), juce::Justification::centred, false);
+    }
 }
 
 void MainComponent::resized()
@@ -203,6 +213,7 @@ void MainComponent::resized()
     hitsCoverageLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     hitsStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     m2FusionStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    clipperHitCountLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     oscStatusLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     oscMessageCountLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     
@@ -224,17 +235,36 @@ void MainComponent::resized()
     dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
     dampingSlider.setBounds(dampingArea);
     
-    auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
-    waveformComboBox.setBounds(waveformArea);
-    
-    auto subOscArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
-    subOscMixSlider.setBounds(subOscArea);
-    
-    auto pitchRangeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    pitchRangeLabel.setBounds(pitchRangeArea.removeFromLeft(labelWidth));
-    pitchRangeSlider.setBounds(pitchRangeArea);
+    // M3: Waveform, SubOsc Mix, Pitch Range solo visibles sin fusión (evitar controles "muertos")
+    bool showLegacyControls = !enableFusionAggregation;
+    if (showLegacyControls)
+    {
+        auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
+        waveformComboBox.setBounds(waveformArea);
+        auto subOscArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
+        subOscMixSlider.setBounds(subOscArea);
+        auto pitchRangeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        pitchRangeLabel.setBounds(pitchRangeArea.removeFromLeft(labelWidth));
+        pitchRangeSlider.setBounds(pitchRangeArea);
+    }
+    waveformLabel.setVisible(showLegacyControls);
+    waveformComboBox.setVisible(showLegacyControls);
+    subOscMixLabel.setVisible(showLegacyControls);
+    subOscMixSlider.setVisible(showLegacyControls);
+    pitchRangeLabel.setVisible(showLegacyControls);
+    pitchRangeSlider.setVisible(showLegacyControls);
+    if (!showLegacyControls)
+    {
+        juce::Rectangle<int> empty(0, 0, 0, 0);
+        waveformLabel.setBounds(empty);
+        waveformComboBox.setBounds(empty);
+        subOscMixLabel.setBounds(empty);
+        subOscMixSlider.setBounds(empty);
+        pitchRangeLabel.setBounds(empty);
+        pitchRangeSlider.setBounds(empty);
+    }
 }
 
 //==============================================================================
@@ -359,6 +389,20 @@ void MainComponent::timerCallback()
                                "/" + juce::String(enqueued) + " enq, " + juce::String(dropped) + " drop | cov " +
                                juce::String(cov * 100.0f, 1) + "% qloss " + juce::String(qloss * 100.0f, 1) + "%",
                                juce::dontSendNotification);
+    
+    // M3: clip rate = blocks/s (interpretable); recompute every 500 ms
+    juce::int64 now = juce::Time::currentTimeMillis();
+    if (now - lastClipUpdateTime >= 500)
+    {
+        int cur = synthesisEngine.getBlocksClippedCount();
+        int deltaBlocks = cur - lastBlocksClippedCount;
+        double deltaSec = (now - lastClipUpdateTime) * 0.001;
+        if (deltaSec <= 0) deltaSec = 0.5;
+        lastBlocksClippedCount = cur;
+        lastClipUpdateTime = now;
+        double blocksPerSec = deltaBlocks / deltaSec;
+        clipperHitCountLabel.setText("Clip: " + juce::String(blocksPerSec, 1) + " blocks/s", juce::dontSendNotification);
+    }
     
     // Update OSC status color based on recent activity
     juce::int64 timeSinceLastMessage = currentTime - lastOscActivityTimestamp;
