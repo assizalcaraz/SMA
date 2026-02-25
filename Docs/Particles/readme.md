@@ -67,8 +67,9 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
   - Puerta de reposo: no se generan hits cuando la velocidad normal de colisión es inferior a un umbral (evita “rest hits”).
   - Energía: la contribución de distancia está ponderada por velocidad, evitando energía por acumulación de distancia en reposo.
   - Calidad: suelo de energía perceptible (ENERGY_FLOOR), cooldown tras filtro de calidad; contadores de auditoría (candidatos, pending, validated, sent, descartes).
-  - Fairness: priorización por energía (nth_element/partial_sort) antes del rate limiting para reducir sesgo FIFO.
+  - Fairness: priorización por energía (nth_element/partial_sort) antes del rate limiting para reducir sesgo FIFO; desempate por (id, surface) para evitar dominancia fija.
   - Rate limiting: dos token buckets (borde y partícula-partícula) con presupuesto borde más estricto.
+  - **Presupuesto por frame**: antes del token bucket se aplica `budget_frame = min(max_per_frame, ceil(target_hits_per_second/fps))`; se envían solo los top `budget_frame` por energía, reduciendo volumen patológico y drops por limiter; contador `discarded_by_budget` en overlay.
   - Debug: fondo semi-opaco detrás del overlay para legibilidad.
 
 ### Verificación (contadores y token buckets)
