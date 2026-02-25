@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include <atomic>
 #include <random>
 
 //==============================================================================
@@ -62,6 +63,10 @@ MainComponent::MainComponent()
     hitsStatsLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(&hitsStatsLabel);
     
+    m2FusionStatsLabel.setText("M2: raw 0 | fused 0/0 enq, 0 drop", juce::dontSendNotification);
+    m2FusionStatsLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&m2FusionStatsLabel);
+    
     // OSC Receiver setup
     oscStatusLabel.setText("OSC: Disconnected", juce::dontSendNotification);
     oscStatusLabel.setJustificationType(juce::Justification::centred);
@@ -90,7 +95,7 @@ MainComponent::MainComponent()
     lastOscCountUpdateTime = juce::Time::currentTimeMillis();
     
     aggregatorTimer.owner = this;
-    if (enableAggregation)
+    if (enableFusionAggregation)
         aggregatorTimer.startTimer(HitAggregator::WINDOW_MS);
     
     // Tamaño por defecto: ancho reducido (columna derecha = Clipper + debug en vertical)
@@ -197,6 +202,7 @@ void MainComponent::resized()
     activeVoicesLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     hitsCoverageLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     hitsStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    m2FusionStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     oscStatusLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     oscMessageCountLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
     
@@ -342,6 +348,18 @@ void MainComponent::timerCallback()
     oscMessageCountLabel.setText("OSC Messages: " + juce::String(messagesPerSec) + "/s", 
                                 juce::dontSendNotification);
     
+    // M2 fusion metrics: raw, fused produced/enqueued/dropped, coverage, queue loss
+    int rawHits = synthesisEngine.getHitsReceived();
+    int produced = fusedProduced.load(std::memory_order_relaxed);
+    int enqueued = synthesisEngine.getFusedHitsEnqueued();
+    int dropped = synthesisEngine.getFusedHitsDiscardedQueue();
+    float cov = (rawHits > 0 && produced > 0) ? (float)enqueued / (float)rawHits : 0.0f;
+    float qloss = (produced > 0) ? (float)dropped / (float)produced : 0.0f;
+    m2FusionStatsLabel.setText("M2: raw " + juce::String(rawHits) + " | fused " + juce::String(produced) +
+                               "/" + juce::String(enqueued) + " enq, " + juce::String(dropped) + " drop | cov " +
+                               juce::String(cov * 100.0f, 1) + "% qloss " + juce::String(qloss * 100.0f, 1) + "%",
+                               juce::dontSendNotification);
+    
     // Update OSC status color based on recent activity
     juce::int64 timeSinceLastMessage = currentTime - lastOscActivityTimestamp;
     if (timeSinceLastMessage < 2000) // Active if message in last 2 seconds
@@ -409,6 +427,7 @@ void MainComponent::flushAggregatorWindow()
 {
     FusedHitSnapshot snaps[HitAggregator::NUM_QUADRANTS];
     int n = hitAggregator.closeWindow(snaps, HitAggregator::NUM_QUADRANTS);
+    fusedProduced.fetch_add(n, std::memory_order_relaxed);
     float metalness = synthesisEngine.getMetalness();
     float subOscMix = synthesisEngine.getSubOscMix();
     for (int i = 0; i < n; i++)
@@ -440,7 +459,7 @@ void MainComponent::mapOSCHitToEvent(const juce::OSCMessage& message)
     float energy = juce::jlimit(0.0f, 1.0f, message[3].getFloat32());
     int surface = message[4].getInt32();
     
-    if (enableAggregation)
+    if (enableFusionAggregation)
     {
         synthesisEngine.incrementHitsReceived();
         hitAggregator.addHit(x, y, energy, surface);

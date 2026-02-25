@@ -79,12 +79,13 @@ int HitAggregator::closeWindow(FusedHitSnapshot* out, int maxCount)
         else
             s.waveformAsInt = WAVEFORM_SINE;
 
-        // Bordes (0..3) algo más graves/quietos que p-p (-1) (M5 afinado)
+        // M2: border (0..3) = -3 dB y -3 semitones respecto a p2p (-1)
         bool predominantEdge = (b.countEdges > b.countPP);
         if (predominantEdge && aOut > 0.01f)
         {
-            s.baseFreq = std::max(100.0f, s.baseFreq * 0.9f);
-            s.amplitude *= 0.85f;
+            s.amplitude *= std::pow(10.0f, -3.0f / 20.0f);  // -3 dB
+            s.baseFreq *= std::pow(2.0f, -3.0f / 12.0f);   // -3 semitones
+            s.baseFreq = std::max(100.0f, std::min(800.0f, s.baseFreq));
         }
 
         // Centro bias opcional (M5): ligeramente más presente cerca del centro

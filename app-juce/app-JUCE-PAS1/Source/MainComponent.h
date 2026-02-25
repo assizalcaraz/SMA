@@ -83,6 +83,10 @@ private:
     juce::Label activeVoicesLabel;
     juce::Label hitsCoverageLabel;
     juce::Label hitsStatsLabel;
+    juce::Label m2FusionStatsLabel;
+    
+    /** Fused snapshots produced by M2 aggregator (closeWindow) since start. */
+    std::atomic<int> fusedProduced{0};
     
     // OSC Receiver
     juce::OSCReceiver oscReceiver;
@@ -97,8 +101,8 @@ private:
     /** Si false (default), PAS ignora /plate y PlateSynth no recibe triggers. */
     bool enablePlateSynth = false;
     
-    /** Si true (default v1), los /hit se agregan por cuadrante/ventana 20 ms y se encolan como FusedHitSnapshot. */
-    bool enableAggregation = true;
+    /** Si true (default), M2 fusion: los /hit se agregan por cuadrante/ventana 20 ms y se encolan como FusedHitSnapshot. */
+    bool enableFusionAggregation = true;
     
     HitAggregator hitAggregator;
     AggregatorTimer aggregatorTimer;
