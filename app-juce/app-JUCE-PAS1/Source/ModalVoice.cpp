@@ -76,6 +76,23 @@ void ModalVoice::setParameters(float baseFreq, float amplitude, float damping,
 }
 
 //==============================================================================
+void ModalVoice::setGlobalParametersOnly(float metalness, float brightness, float damping)
+{
+    float prevBrightness = currentBrightness;
+    float prevMetalness = currentMetalness;
+    currentDamping = juce::jlimit(0.0f, 1.0f, damping);
+    currentBrightness = juce::jlimit(0.0f, 1.0f, brightness);
+    currentMetalness = juce::jlimit(0.0f, 1.0f, metalness);
+    if (std::abs(prevBrightness - currentBrightness) > 0.01f || std::abs(prevMetalness - currentMetalness) > 0.01f)
+        updateFilterCoefficients();
+    float dampingInverted = 1.0f - currentDamping;
+    energyScaledAttackMs = juce::jmap(currentAmplitude, 0.5f, 0.1f, 0.1f, 2.0f);
+    float decayTimeMs = juce::jmap(dampingInverted * dampingInverted, 0.0f, 1.0f, 10.0f, 500.0f);
+    energyScaledDecayMs = decayTimeMs;
+    updateADSRSamples();
+}
+
+//==============================================================================
 void ModalVoice::setADSR(float attackMs, float decayMs, float sustainLevel, float releaseMs)
 {
     this->attackMs = juce::jmax(0.1f, attackMs);
@@ -538,13 +555,13 @@ void ModalVoice::updateEnvelope()
             envelope += envelopeIncrement; // Negativo (decay)
             if (envelope <= sustainLevel)
             {
-                envelope = sustainLevel;
-                envelopeStage = EnvelopeStage::Sustain;
+                envelope = 0.0f;
+                envelopeStage = EnvelopeStage::Idle;
             }
             break;
-            
+
         case EnvelopeStage::Sustain:
-            // Mantener en sustain level (no hacer nada)
+            // Unused: percussive envelope goes Decay -> Idle only
             break;
             
         case EnvelopeStage::Release:

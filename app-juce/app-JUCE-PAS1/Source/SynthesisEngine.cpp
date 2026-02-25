@@ -1,4 +1,8 @@
 #include "SynthesisEngine.h"
+#include <atomic>
+
+// renderNextBlock(), processEventQueue(), and everything they call run on the audio thread
+// and must be RT-safe: no locks, allocations, or logging.
 
 //==============================================================================
 SynthesisEngine::SynthesisEngine()
@@ -40,10 +44,7 @@ void SynthesisEngine::prepare(double sampleRate)
 //==============================================================================
 void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)
 {
-    // RT-SAFE: Procesar eventos de la cola lock-free primero (máximo MAX_HITS_PER_BLOCK)
     processEventQueue();
-    
-    // RT-SAFE: Actualizar parámetros globales en voces activas periódicamente
     // Actualizar cada N bloques para eficiencia (evitar actualizar en cada bloque)
     parameterUpdateCounter++;
     if (parameterUpdateCounter >= PARAMETER_UPDATE_INTERVAL)
@@ -76,7 +77,6 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
     voiceManager.renderNextBlock(buffer, startSample, numSamples);
     
     // Renderizar plate y sumar al buffer (pre-limiter)
-    // RT-SAFE: Usar buffer pre-allocado en prepare()
     int numChannels = buffer.getNumChannels();
     
     // Limpiar y renderizar plate en buffer temporal
@@ -102,22 +102,16 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         }
     }
     
-    // Aplicar procesamiento master (solo limiter)
+    // Aplicar procesamiento master (solo clipper)
     bool currentLimiterEnabled = limiterEnabled.load();
-    
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
         float* channelData = buffer.getWritePointer(channel, startSample);
-        
         for (int sample = 0; sample < numSamples; sample++)
         {
             float sampleValue = channelData[sample];
-            
-            // Aplicar limiter si está habilitado
             if (currentLimiterEnabled)
-            {
-                sampleValue = applyLimiter(sampleValue);
-            }
+                sampleValue = applyClipper(sampleValue);
             
             channelData[sample] = sampleValue;
             
@@ -129,15 +123,11 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         }
     }
     
-    // RT-SAFE: Removido setMaxVoices() y prepare() desde audio thread
-    // Estos deben llamarse desde UI thread usando setMaxVoices() que actualiza el atomic
-    // VoiceManager debe pre-allocar todas las voces y solo activar/desactivar según maxVoices
 }
 
 //==============================================================================
 void SynthesisEngine::setMaxVoices(int newMaxVoices)
 {
-    // RT-SAFE: Actualizar atomic y también el VoiceManager
     int limitedVoices = juce::jlimit(4, 12, newMaxVoices);
     maxVoices.store(limitedVoices);
     
@@ -234,7 +224,6 @@ float SynthesisEngine::getPlateVolume() const
 //==============================================================================
 void SynthesisEngine::triggerTestVoice()
 {
-    // RT-SAFE: Escribir evento a cola lock-free en lugar de llamar directamente
     // El audio thread procesará el evento en el próximo renderNextBlock()
     HitEvent event;
     event.baseFreq = testFreq.load();
@@ -262,10 +251,8 @@ void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude,
                                          ModalVoice::ExcitationWaveform waveform,
                                          float subOscMix)
 {
-    // Incrementar contador de hits recibidos
-    hitsReceived++;
+    hitsReceived.fetch_add(1, std::memory_order_relaxed);
     
-    // RT-SAFE: Escribir evento a cola lock-free (mismo path que triggerTestVoice)
     // El audio thread procesará el evento en el próximo renderNextBlock()
     HitEvent event;
     event.baseFreq = baseFreq;
@@ -287,7 +274,7 @@ void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude,
     else
     {
         // Cola llena - evento descartado
-        hitsDiscarded++;
+        hitsDiscarded.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -309,65 +296,56 @@ void SynthesisEngine::reset()
     voiceManager.resetAll();
     plateSynth.reset();
     outputLevel = 0.0f;
-    hitsReceived.store(0);
-    hitsTriggered.store(0);
-    hitsDiscarded.store(0);
+    hitsReceived.store(0, std::memory_order_relaxed);
+    hitsTriggered.store(0, std::memory_order_relaxed);
+    hitsDiscarded.store(0, std::memory_order_relaxed);
 }
 
 //==============================================================================
 int SynthesisEngine::getHitsReceived() const
 {
-    return hitsReceived.load();
+    return hitsReceived.load(std::memory_order_relaxed);
 }
 
 int SynthesisEngine::getHitsTriggered() const
 {
-    return hitsTriggered.load();
+    return hitsTriggered.load(std::memory_order_relaxed);
 }
 
 int SynthesisEngine::getHitsDiscarded() const
 {
-    return hitsDiscarded.load();
+    return hitsDiscarded.load(std::memory_order_relaxed);
 }
 
 float SynthesisEngine::getHitCoverageRatio() const
 {
-    int received = hitsReceived.load();
+    int received = hitsReceived.load(std::memory_order_relaxed);
     if (received == 0)
         return 1.0f; // Sin hits recibidos = ratio perfecto
     
-    int triggered = hitsTriggered.load();
+    int triggered = hitsTriggered.load(std::memory_order_relaxed);
     return (float)triggered / (float)received;
 }
 
 //==============================================================================
 void SynthesisEngine::triggerPlateFromOSC(float freq, float amp, int mode)
 {
-    // RT-SAFE: Llamar a PlateSynth que usa atomic internamente
     plateSynth.triggerPlate(freq, amp, mode);
 }
 
 //==============================================================================
-float SynthesisEngine::applyLimiter(float sample)
+float SynthesisEngine::applyClipper(float sample)
 {
-    // RT-SAFE: Limiter simplificado (evitar std::abs() costoso)
     float absSample = sample >= 0.0f ? sample : -sample;
-    
-    if (absSample > limiterThreshold)
-    {
-        // Simplificar cálculo de limiter
-        float ratio = limiterThreshold / absSample;
-        return sample * ratio;
-    }
-    
+    if (absSample > clipperThreshold)
+        return sample * (clipperThreshold / absSample);
     return sample;
 }
 
 //==============================================================================
 void SynthesisEngine::processEventQueue()
 {
-    // RT-SAFE: Drenar eventos de la cola lock-free (máximo MAX_HITS_PER_BLOCK por bloque)
-    // Limitar aún más bajo carga para evitar sobrecarga del audio thread
+    // Drain event queue (max MAX_HITS_PER_BLOCK per block; less if backlog is high)
     int available = eventFifo.getNumReady();
     if (available == 0)
         return;
@@ -391,17 +369,15 @@ void SynthesisEngine::processEventQueue()
         voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
                                    event.damping, event.brightness, event.metalness,
                                    event.waveform, event.subOscMix);
-        hitsTriggered++; // Incrementar contador de hits disparados
+        hitsTriggered.fetch_add(1, std::memory_order_relaxed);
     }
-    
-    // Procesar segunda sección (si hay wraparound)
     for (int i = 0; i < size2; i++)
     {
         const HitEvent& event = eventQueue[start2 + i];
-        voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
+        voiceManager.triggerVoice(event.baseFreq, event.amplitude,
                                    event.damping, event.brightness, event.metalness,
                                    event.waveform, event.subOscMix);
-        hitsTriggered++; // Incrementar contador de hits disparados
+        hitsTriggered.fetch_add(1, std::memory_order_relaxed);
     }
     
     eventFifo.finishedRead(size1 + size2);

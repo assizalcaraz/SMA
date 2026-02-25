@@ -31,13 +31,13 @@ MainComponent::MainComponent()
     waveformLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(&waveformLabel);
     
-    // Limiter toggle
-    limiterToggle.setButtonText("Limiter");
+    // Clipper toggle (soft clip on output)
+    limiterToggle.setButtonText("Clipper");
     limiterToggle.setToggleState(true, juce::dontSendNotification);
     limiterToggle.addListener(this);
     addAndMakeVisible(&limiterToggle);
     
-    limiterLabel.setText("Limiter", juce::dontSendNotification);
+    limiterLabel.setText("Clipper", juce::dontSendNotification);
     limiterLabel.attachToComponent(&limiterToggle, false);
     addAndMakeVisible(&limiterLabel);
     
@@ -227,7 +227,6 @@ void MainComponent::resized()
     // Segunda columna de controles
     auto rightColumn = area.removeFromRight(350);
     
-    // Limiter toggle
     limiterToggle.setBounds(rightColumn.removeFromTop(30).reduced(margin));
     
     // Botón de test trigger

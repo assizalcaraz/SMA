@@ -34,11 +34,14 @@ public:
     void prepare(double sampleRate);
 
     /** Configura los parámetros de la voz */
-    void setParameters(float baseFreq, float amplitude, float damping, 
+    void setParameters(float baseFreq, float amplitude, float damping,
                        float brightness, float metalness,
                        ExcitationWaveform waveform = ExcitationWaveform::Noise,
                        float subOscMix = 0.0f);
-    
+
+    /** Actualiza solo parámetros globales (metalness, brightness, damping). No modifica waveform, subOscMix, baseFreq ni amplitude. RT-safe. */
+    void setGlobalParametersOnly(float metalness, float brightness, float damping);
+
     /** Configura parámetros ADSR (Attack, Decay, Sustain, Release) */
     void setADSR(float attackMs, float decayMs, float sustainLevel, float releaseMs);
 

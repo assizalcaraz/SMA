@@ -4,17 +4,6 @@
 #include "SynthesisEngine.h"
 #include <random>
 
-// Include OSC module directly (needed until project is regenerated from Projucer)
-// After regenerating, this can be removed as it will be in JuceHeader.h
-// Try multiple include paths to ensure it works
-#if ! JUCE_MODULE_AVAILABLE_juce_osc
-    #if __has_include(<juce_osc/juce_osc.h>)
-        #include <juce_osc/juce_osc.h>
-    #else
-        #include "../../../../../../../../../Applications/JUCE/modules/juce_osc/juce_osc.h"
-    #endif
-#endif
-
 //==============================================================================
 /*
     This component lives inside our window, and this is where you should put all

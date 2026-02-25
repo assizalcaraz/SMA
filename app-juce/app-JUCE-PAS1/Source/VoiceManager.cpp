@@ -269,18 +269,6 @@ void VoiceManager::updateGlobalParameters(float metalness, float brightness, flo
         
         // Solo actualizar voces activas
         if (voice->isActive())
-        {
-            // Obtener parámetros actuales de la voz y actualizar solo los globales
-            // Mantener waveform y subOscMix actuales (no se actualizan en updateGlobalParameters)
-            voice->setParameters(
-                voice->getCurrentBaseFreq(),
-                voice->getCurrentAmplitude(),
-                damping,
-                brightness,
-                metalness,
-                ModalVoice::ExcitationWaveform::Noise, // Default, se mantiene el waveform de cada voz
-                0.0f // Default subOscMix, se mantiene el valor actual
-            );
-        }
+            voice->setGlobalParametersOnly(metalness, brightness, damping);
     }
 }

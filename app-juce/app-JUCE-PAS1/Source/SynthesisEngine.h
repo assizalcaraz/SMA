@@ -117,9 +117,8 @@ private:
     juce::AbstractFifo eventFifo{EVENT_QUEUE_SIZE};
     HitEvent eventQueue[EVENT_QUEUE_SIZE];
     
-    // Limiter simple
-    float limiterThreshold = 0.95f;
-    float limiterRatio = 10.0f;
+    // Clipper (soft clip por sample, sin envelope follower)
+    float clipperThreshold = 0.95f;
     
     // Medición de nivel de salida
     float outputLevel = 0.0f;
@@ -145,8 +144,8 @@ private:
     /** Procesa eventos de la cola lock-free (llamado desde audio thread) */
     void processEventQueue();
 
-    /** Aplica limiter suave */
-    float applyLimiter(float sample);
+    /** Aplica clipper (soft clip por sample) */
+    float applyClipper(float sample);
 
     /** Actualiza el nivel de salida */
     void updateOutputLevel(float sample);

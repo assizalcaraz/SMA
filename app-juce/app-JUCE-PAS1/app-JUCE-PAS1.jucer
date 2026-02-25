@@ -42,21 +42,6 @@
         <CONFIGURATION isDebug="1" name="Debug" targetName="app-JUCE-PAS1"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="app-JUCE-PAS1"/>
       </CONFIGURATIONS>
-      <MODULEPATHS>
-        <MODULEPATH id="juce_audio_basics" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_devices" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_formats" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_processors" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_utils" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_core" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_data_structures" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_events" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_graphics" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_gui_basics" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_gui_extra" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_processors_headless" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_osc" path="../../../../../../../../../Applications/JUCE/modules"/>
-      </MODULEPATHS>
     </XCODE_MAC>
   </EXPORTFORMATS>
 </JUCERPROJECT>
