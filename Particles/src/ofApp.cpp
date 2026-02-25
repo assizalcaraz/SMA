@@ -3,6 +3,14 @@
 #include <cmath>
 #include <algorithm>
 
+const float ofApp::REST_SPEED_EPSILON_FACTOR = 0.01f;
+static const float ENERGY_FLOOR = 0.01f;  // Suelo perceptible; descartes por debajo (Fase 2)
+
+//--------------------------------------------------------------
+bool ofApp::isExternalForceActive() const {
+    return (mouse.active && mouse.vel.length() >= 1.0f) || (plateAmp >= 0.01f);
+}
+
 //--------------------------------------------------------------
 void ofApp::setup(){
     // Inicializar contadores de debug
@@ -39,16 +47,30 @@ void ofApp::setup(){
     energy_b = 0.3f;         // Peso de distancia en energía (0.1-0.5)
     
     // Parámetros de rate limiting
-    max_hits_per_second = 800.0f;  // Máximo de hits por segundo (aumentado para más eventos sonoros)
-    burst = 1000.0f;                // Burst máximo (aumentado para permitir más eventos simultáneos)
-    max_hits_per_frame = 50;        // Máximo de hits por frame (aumentado para sonido más denso)
-    
-    // Inicializar rate limiter
+    max_hits_per_second = 800.0f;
+    burst = 1000.0f;
+    max_hits_per_frame = 50;
+    max_hits_border_per_second = 200.0f;   // Fase 4: borde más estricto que p2p
+    max_hits_pp_per_second = 600.0f;
+
+    // Inicializar rate limiter global (solo max_per_frame y hits_this_frame)
     rate_limiter.tokens = burst;
     rate_limiter.rate = max_hits_per_second;
     rate_limiter.burst = burst;
     rate_limiter.max_per_frame = max_hits_per_frame;
     rate_limiter.hits_this_frame = 0;
+
+    rate_limiter_border.tokens = burst;
+    rate_limiter_border.rate = max_hits_border_per_second;
+    rate_limiter_border.burst = burst;
+    rate_limiter_border.max_per_frame = 0;
+    rate_limiter_border.hits_this_frame = 0;
+
+    rate_limiter_pp.tokens = burst;
+    rate_limiter_pp.rate = max_hits_pp_per_second;
+    rate_limiter_pp.burst = burst;
+    rate_limiter_pp.max_per_frame = 0;
+    rate_limiter_pp.hits_this_frame = 0;
     
     // Inicializar contadores de debug
     hits_per_second = 0.0f;
@@ -56,7 +78,16 @@ void ofApp::setup(){
     hits_discarded_cooldown = 0;
     hits_this_second = 0;
     time_accumulator = 0.0f;
-    
+    hits_candidate_border = 0;
+    hits_candidate_p2p = 0;
+    hits_added_pending = 0;
+    hits_validated = 0;
+    hits_sent_osc = 0;
+    hits_discarded_low_energy = 0;
+    validated_this_frame = 0;
+    sent_this_frame = 0;
+    dropped_rate_this_frame = 0;
+
     // Inicializar mouse
     mouse.pos = ofVec2f(0.5f, 0.5f);
     mouse.pos_prev = mouse.pos;
@@ -189,7 +220,11 @@ void ofApp::update(){
     rate_limiter.rate = max_hits_per_second;
     rate_limiter.burst = burst;
     rate_limiter.max_per_frame = max_hits_per_frame;
-    
+    rate_limiter_border.rate = max_hits_border_per_second;
+    rate_limiter_border.burst = burst;
+    rate_limiter_pp.rate = max_hits_pp_per_second;
+    rate_limiter_pp.burst = burst;
+
     // Actualizar tamaño de partículas
     particleSize = particleSizeSlider;
     
@@ -236,8 +271,11 @@ void ofApp::update(){
     // Limpiar eventos del frame anterior
     pending_hits.clear();
     validated_hits.clear();
-    
-    // Actualizar rate limiter
+    validated_this_frame = 0;
+    sent_this_frame = 0;
+    dropped_rate_this_frame = 0;
+
+    // Actualizar rate limiter (refill antes de selección/consumo)
     updateRateLimiter(dt_sec);
     
     // Detectar y manejar colisiones
@@ -252,14 +290,28 @@ void ofApp::update(){
         collisions_resolved = 0;
     }
     p2p_collision_ms = (ofGetElapsedTimef() - t_p2p_start) * 1000.0f;
-    
+
+    // Fase 3: priorizar por energía (O(n) selección, sin sort completo)
+    static const size_t max_pending_cap = 500;
+    auto greater_energy = [](const HitEvent& a, const HitEvent& b) { return a.energy > b.energy; };
+    if (pending_hits.size() > max_pending_cap) {
+        std::nth_element(pending_hits.begin(), pending_hits.begin() + (max_pending_cap - 1), pending_hits.end(), greater_energy);
+        pending_hits.resize(max_pending_cap);
+    }
+    if (pending_hits.size() > (size_t)rate_limiter.max_per_frame) {
+        std::nth_element(pending_hits.begin(), pending_hits.begin() + (rate_limiter.max_per_frame - 1), pending_hits.end(), greater_energy);
+        std::partial_sort(pending_hits.begin(), pending_hits.begin() + rate_limiter.max_per_frame, pending_hits.end(), greater_energy);
+    }
+
     // Procesar eventos pendientes con rate limiting
     processPendingHits();
     
-    // Enviar eventos OSC validados
+    // Enviar eventos OSC validados (hits_sent_osc solo al enviar realmente)
     if (oscEnabled) {
         for (const auto& event : validated_hits) {
             sendHitEvent(event);
+            hits_sent_osc++;
+            sent_this_frame++;
         }
         
         // Enviar mensaje /state periódicamente (10 Hz durante actividad)
@@ -283,9 +335,15 @@ void ofApp::update(){
         hits_per_second = (float)hits_this_second;
         hits_this_second = 0;
         time_accumulator = 0.0f;
-        // Resetear contadores de hits descartados cada segundo para mostrar tasa actual
+        // Resetear contadores de hits descartados y audit cada segundo para mostrar tasa actual
         hits_discarded_rate = 0;
         hits_discarded_cooldown = 0;
+        hits_candidate_border = 0;
+        hits_candidate_p2p = 0;
+        hits_added_pending = 0;
+        hits_validated = 0;
+        hits_sent_osc = 0;
+        hits_discarded_low_energy = 0;
     }
     update_total_ms = (ofGetElapsedTimef() - t_update_start) * 1000.0f;
 }
@@ -813,8 +871,9 @@ float ofApp::calculateHitEnergy(Particle& p, int surface) {
     // Distancia normalizada: dist_norm = last_hit_distance / dist_ref
     float dist_norm = ofClamp(p.last_hit_distance / dist_ref, 0.0f, 1.0f);
     
-    // Energía combinada: energy = clamp(a * speed_norm + b * dist_norm, 0..1)
-    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm, 0.0f, 1.0f);
+    // Energía: dist_norm ponderado por speed_norm para no generar energía en reposo
+    // energy = energy_a * speed_norm + energy_b * dist_norm * speed_norm (clamp 0..1)
+    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm * speed_norm, 0.0f, 1.0f);
     
     // Validación mínima: descartar ruido numérico extremo
     if (energy < 0.001f) {
@@ -833,12 +892,12 @@ float ofApp::calculateParticleCollisionEnergy(Particle& p1, Particle& p2) {
     // Normalizar velocidad relativa usando vel_ref
     float speed_norm = ofClamp(relSpeed / vel_ref, 0.0f, 1.0f);
     
-    // Usar distancia promedio desde último hit (o usar distancia actual si no hay hit previo)
+    // Usar distancia promedio desde último hit
     float avg_distance = (p1.last_hit_distance + p2.last_hit_distance) * 0.5f;
     float dist_norm = ofClamp(avg_distance / dist_ref, 0.0f, 1.0f);
     
-    // Energía combinada: energy = clamp(a * speed_norm + b * dist_norm, 0..1)
-    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm, 0.0f, 1.0f);
+    // Energía: dist_norm ponderado por speed_norm (clamp 0..1)
+    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm * speed_norm, 0.0f, 1.0f);
     
     // Validación mínima: descartar ruido numérico extremo
     if (energy < 0.001f) {
@@ -850,46 +909,53 @@ float ofApp::calculateParticleCollisionEnergy(Particle& p1, Particle& p2) {
 
 //--------------------------------------------------------------
 void ofApp::generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisionPoint) {
-    float timeNow = ofGetElapsedTimef();
-    
-    // Verificar cooldown para ambas partículas
-    float timeSinceLastHit1 = timeNow - p1.lastHitTime;
-    float timeSinceLastHit2 = timeNow - p2.lastHitTime;
-    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
-    
-    // Solo generar evento si ambas partículas están fuera del cooldown
-    // (o al menos una, para evitar perder eventos)
-    if (timeSinceLastHit1 < cooldown_seconds && timeSinceLastHit2 < cooldown_seconds) {
-        hits_discarded_cooldown++;
-        return; // Ambas partículas en cooldown
+    // Rest gate (Fase 1): velocidad normal de colisión; no tocar lastHitTime/last_hit_distance si no pasamos
+    float rest_epsilon = REST_SPEED_EPSILON_FACTOR * vel_ref;
+    ofVec2f diff = p1.pos - p2.pos;
+    float dist = diff.length();
+    ofVec2f collisionNormal;
+    if (dist >= 1e-6f) {
+        collisionNormal = diff / dist;
     }
-    
+    ofVec2f vrel = p1.vel_pre - p2.vel_pre;
+    float vn = (dist >= 1e-6f) ? std::abs(vrel.dot(collisionNormal)) : vrel.length();
+    if (vn < rest_epsilon && !isExternalForceActive()) {
+        return;
+    }
+
+    hits_candidate_p2p++;
+
     // Calcular energía del impacto
     float energy = calculateParticleCollisionEnergy(p1, p2);
-    
-    if (energy <= 0.0f) {
-        return; // Energía demasiado baja (ruido numérico)
+    if (energy < ENERGY_FLOOR) {
+        hits_discarded_low_energy++;
+        return;
     }
-    
+
+    float timeNow = ofGetElapsedTimef();
+    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
+    float timeSinceLastHit1 = timeNow - p1.lastHitTime;
+    float timeSinceLastHit2 = timeNow - p2.lastHitTime;
+    if (timeSinceLastHit1 < cooldown_seconds && timeSinceLastHit2 < cooldown_seconds) {
+        hits_discarded_cooldown++;
+        return;
+    }
+
     // Crear evento de hit usando la partícula con mayor energía o la primera
-    // Usar punto de colisión como posición
     Particle& p = (p1.vel_pre.length() > p2.vel_pre.length()) ? p1 : p2;
-    
     HitEvent event;
-    event.id = p.id;  // Usar ID de la partícula con mayor velocidad
+    event.id = p.id;
     event.x = ofClamp(collisionPoint.x / ofGetWidth(), 0.0f, 1.0f);
     event.y = ofClamp(collisionPoint.y / ofGetHeight(), 0.0f, 1.0f);
     event.energy = energy;
-    event.surface = -1;  // -1 indica colisión partícula-partícula (no superficie)
-    
-    // Agregar a eventos pendientes
+    event.surface = -1;
+
     pending_hits.push_back(event);
-    
-    // Actualizar estado de ambas partículas
+    hits_added_pending++;
+
     p1.lastHitTime = timeNow;
     p1.last_hit_distance = 0.0f;
     p1.last_surface = -1;
-    
     p2.lastHitTime = timeNow;
     p2.last_hit_distance = 0.0f;
     p2.last_surface = -1;
@@ -897,36 +963,43 @@ void ofApp::generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisi
 
 //--------------------------------------------------------------
 void ofApp::generateHitEvent(Particle& p, int surface) {
-    float timeNow = ofGetElapsedTimef();
-    
-    // Verificar cooldown por partícula
-    float timeSinceLastHit = timeNow - p.lastHitTime;
-    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
-    
-    if (timeSinceLastHit < cooldown_seconds) {
-        hits_discarded_cooldown++;
-        return; // Partícula en cooldown
+    // Rest gate (Fase 1): componente normal de velocidad al borde
+    float rest_epsilon = REST_SPEED_EPSILON_FACTOR * vel_ref;
+    ofVec2f borderNormal;
+    if (surface == 0) borderNormal.set(-1.0f, 0.0f);       // L
+    else if (surface == 1) borderNormal.set(1.0f, 0.0f);     // R
+    else if (surface == 2) borderNormal.set(0.0f, -1.0f);  // T
+    else borderNormal.set(0.0f, 1.0f);                      // B
+    float vn = std::abs(p.vel_pre.dot(borderNormal));
+    if (vn < rest_epsilon && !isExternalForceActive()) {
+        return;
     }
-    
-    // Calcular energía del impacto
+
+    hits_candidate_border++;
+
     float energy = calculateHitEnergy(p, surface);
-    
-    if (energy <= 0.0f) {
-        return; // Energía demasiado baja (ruido numérico)
+    if (energy < ENERGY_FLOOR) {
+        hits_discarded_low_energy++;
+        return;
     }
-    
-    // Crear evento de hit
+
+    float timeNow = ofGetElapsedTimef();
+    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
+    if (timeNow - p.lastHitTime < cooldown_seconds) {
+        hits_discarded_cooldown++;
+        return;
+    }
+
     HitEvent event;
     event.id = p.id;
     event.x = ofClamp(p.pos.x / ofGetWidth(), 0.0f, 1.0f);
     event.y = ofClamp(p.pos.y / ofGetHeight(), 0.0f, 1.0f);
     event.energy = energy;
     event.surface = surface;
-    
-    // Agregar a eventos pendientes
+
     pending_hits.push_back(event);
-    
-    // Actualizar estado de partícula
+    hits_added_pending++;
+
     p.lastHitTime = timeNow;
     p.last_hit_distance = 0.0f;
     p.last_surface = surface;
@@ -934,48 +1007,42 @@ void ofApp::generateHitEvent(Particle& p, int surface) {
 
 //--------------------------------------------------------------
 void ofApp::updateRateLimiter(float dt) {
-    // Token bucket: tokens += rate * dt
-    rate_limiter.tokens += rate_limiter.rate * dt;
-    
-    // Limitar tokens al burst máximo
-    rate_limiter.tokens = ofMin(rate_limiter.tokens, rate_limiter.burst);
-    
-    // Resetear contador de hits este frame
+    rate_limiter_border.tokens += rate_limiter_border.rate * dt;
+    rate_limiter_border.tokens = ofMin(rate_limiter_border.tokens, rate_limiter_border.burst);
+    rate_limiter_pp.tokens += rate_limiter_pp.rate * dt;
+    rate_limiter_pp.tokens = ofMin(rate_limiter_pp.tokens, rate_limiter_pp.burst);
     rate_limiter.hits_this_frame = 0;
 }
 
 //--------------------------------------------------------------
-bool ofApp::canEmitHit() {
-    // Verificar que hay tokens disponibles
-    if (rate_limiter.tokens < 1.0f) {
-        return false;
-    }
-    
-    // Verificar límite por frame
-    if (rate_limiter.hits_this_frame >= rate_limiter.max_per_frame) {
-        return false;
-    }
-    
+bool ofApp::canEmitHit(const HitEvent& event) {
+    bool is_border = event.surface >= 0;
+    RateLimiter& bucket = is_border ? rate_limiter_border : rate_limiter_pp;
+    if (bucket.tokens < 1.0f) return false;
+    if (rate_limiter.hits_this_frame >= rate_limiter.max_per_frame) return false;
     return true;
 }
 
 //--------------------------------------------------------------
-void ofApp::consumeToken() {
-    rate_limiter.tokens -= 1.0f;
+void ofApp::consumeToken(const HitEvent& event) {
+    bool is_border = event.surface >= 0;
+    RateLimiter& bucket = is_border ? rate_limiter_border : rate_limiter_pp;
+    bucket.tokens -= 1.0f;
     rate_limiter.hits_this_frame++;
 }
 
 //--------------------------------------------------------------
 void ofApp::processPendingHits() {
     for (const auto& event : pending_hits) {
-        if (canEmitHit()) {
-            // Evento válido, agregar a validated_hits
+        if (canEmitHit(event)) {
             validated_hits.push_back(event);
-            consumeToken();
+            hits_validated++;
+            validated_this_frame++;
+            consumeToken(event);
             hits_this_second++;
         } else {
-            // Evento descartado por rate limiting
             hits_discarded_rate++;
+            dropped_rate_this_frame++;
         }
     }
 }
@@ -991,23 +1058,39 @@ void ofApp::drawDebugOverlay() {
     ss << "draw_ms: " << draw_ms << endl;
     ss << "narrow_phase_pairs_checked: " << narrow_phase_pairs_checked << endl;
     ss << "collisions_resolved: " << collisions_resolved << endl;
-    ss << "osc_msgs_sent_per_sec: " << hits_per_second << endl;
-    ss << "osc_msgs_dropped_by_rate_limiter: " << hits_discarded_rate << endl;
+    ss << "osc_msgs_sent_per_sec: " << hits_per_second << " (per_sec)" << endl;
+    ss << "osc_msgs_dropped_by_rate_limiter: " << hits_discarded_rate << " (per_sec)" << endl;
+    ss << "this_frame: validated " << validated_this_frame << " sent " << sent_this_frame << " dropped " << dropped_rate_this_frame << endl;
     ss << "---" << endl;
     ss << "Particles (total): " << particles.size() << endl;
     ss << "Particles (rendered): " << particles_rendered_this_frame << endl;
     ss << "k_home: " << k_home << " k_drag: " << k_drag << " k_gesture: " << k_gesture << endl;
     ss << "Mouse vel: " << mouse.vel.length() << " px/s" << endl;
     ss << "Discarded (cooldown): " << hits_discarded_cooldown << endl;
-    ss << "Tokens: " << rate_limiter.tokens << " Pending: " << pending_hits.size() << " Validated: " << validated_hits.size() << endl;
+    ss << "candidate_border: " << hits_candidate_border << " candidate_p2p: " << hits_candidate_p2p << endl;
+    ss << "added_pending: " << hits_added_pending << " validated: " << hits_validated << " sent_osc: " << hits_sent_osc << " (per_sec)" << endl;
+    ss << "Discarded (low_energy): " << hits_discarded_low_energy << endl;
+    ss << "Tokens border: " << rate_limiter_border.tokens << " pp: " << rate_limiter_pp.tokens << endl;
+    ss << "frame cap: " << rate_limiter.hits_this_frame << "/" << rate_limiter.max_per_frame << endl;
     ss << "OSC: " << (oscEnabled ? "ON" : "OFF");
     if (oscEnabled) ss << " " << oscHost << ":" << oscPort;
 
     float x = 20.0f;
     float lineHeight = 14.0f;
-    int lineCount = 18;
+    int lineCount = 23;
     float y = ofGetHeight() - (lineCount * lineHeight) - 20.0f;
     if (y < 20.0f) y = 20.0f;
+
+    // Fase 5: fondo semi-opaco para legibilidad (ancho por línea más larga × ~8px, alto por lineCount)
+    const float padding = 7.0f;
+    const int approxCharWidth = 8;
+    const int maxLineChars = 58;
+    float boxW = (float)(maxLineChars * approxCharWidth);
+    float boxH = lineCount * lineHeight + 2.0f * padding;
+    ofSetColor(0, 0, 0, 180);
+    ofDrawRectangle(x - padding, y - padding, boxW, boxH);
+
+    ofSetColor(255, 255, 255);
     ofDrawBitmapString(ss.str(), x, y);
 }
 
