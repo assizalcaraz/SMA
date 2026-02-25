@@ -46,6 +46,9 @@ void ofApp::setup(){
     energy_a = 0.7f;         // Peso de velocidad en energía (0.5-0.9)
     energy_b = 0.3f;         // Peso de distancia en energía (0.1-0.5)
     
+    // Presupuesto por frame (selección por energía antes del token bucket)
+    target_hits_per_second = 800.0f;
+
     // Parámetros de rate limiting
     max_hits_per_second = 800.0f;
     burst = 1000.0f;
@@ -87,6 +90,9 @@ void ofApp::setup(){
     validated_this_frame = 0;
     sent_this_frame = 0;
     dropped_rate_this_frame = 0;
+    discarded_by_budget_this_frame = 0;
+    discarded_by_budget_per_sec = 0;
+    discarded_by_budget_accumulator = 0;
 
     // Inicializar mouse
     mouse.pos = ofVec2f(0.5f, 0.5f);
@@ -274,6 +280,7 @@ void ofApp::update(){
     validated_this_frame = 0;
     sent_this_frame = 0;
     dropped_rate_this_frame = 0;
+    discarded_by_budget_this_frame = 0;
 
     // Actualizar rate limiter (refill antes de selección/consumo)
     updateRateLimiter(dt_sec);
@@ -291,18 +298,29 @@ void ofApp::update(){
     }
     p2p_collision_ms = (ofGetElapsedTimef() - t_p2p_start) * 1000.0f;
 
-    // Fase 3: priorizar por energía (O(n) selección, sin sort completo)
+    // Presupuesto por frame: selección por energía ANTES del token bucket (reduce volumen patológico)
+    float fps_estimate = ofGetFrameRate() > 1.0f ? ofGetFrameRate() : 60.0f;
+    int budget_frame = (int)std::min((float)rate_limiter.max_per_frame, std::ceil(target_hits_per_second / fps_estimate));
+    if (budget_frame < 1) budget_frame = 1;
+
+    auto greater_energy = [](const HitEvent& a, const HitEvent& b) {
+        if (a.energy != b.energy) return a.energy > b.energy;
+        return (a.id * 31 + (a.surface + 1)) < (b.id * 31 + (b.surface + 1));  // tie-break para fairness
+    };
     static const size_t max_pending_cap = 500;
-    auto greater_energy = [](const HitEvent& a, const HitEvent& b) { return a.energy > b.energy; };
     if (pending_hits.size() > max_pending_cap) {
         std::nth_element(pending_hits.begin(), pending_hits.begin() + (max_pending_cap - 1), pending_hits.end(), greater_energy);
         pending_hits.resize(max_pending_cap);
     }
-    if (pending_hits.size() > (size_t)rate_limiter.max_per_frame) {
-        std::nth_element(pending_hits.begin(), pending_hits.begin() + (rate_limiter.max_per_frame - 1), pending_hits.end(), greater_energy);
-        std::partial_sort(pending_hits.begin(), pending_hits.begin() + rate_limiter.max_per_frame, pending_hits.end(), greater_energy);
+    if (pending_hits.size() > (size_t)budget_frame) {
+        discarded_by_budget_this_frame = (int)(pending_hits.size() - (size_t)budget_frame);
+        std::nth_element(pending_hits.begin(), pending_hits.begin() + (budget_frame - 1), pending_hits.end(), greater_energy);
+        pending_hits.resize(budget_frame);
+        std::partial_sort(pending_hits.begin(), pending_hits.begin() + budget_frame, pending_hits.end(), greater_energy);
     }
+    discarded_by_budget_accumulator += discarded_by_budget_this_frame;
 
+    // Token bucket como red de seguridad (processPendingHits)
     // Procesar eventos pendientes con rate limiting
     processPendingHits();
     
@@ -344,6 +362,8 @@ void ofApp::update(){
         hits_validated = 0;
         hits_sent_osc = 0;
         hits_discarded_low_energy = 0;
+        discarded_by_budget_per_sec = discarded_by_budget_accumulator;
+        discarded_by_budget_accumulator = 0;
     }
     update_total_ms = (ofGetElapsedTimef() - t_update_start) * 1000.0f;
 }
@@ -1061,6 +1081,7 @@ void ofApp::drawDebugOverlay() {
     ss << "collisions_resolved: " << collisions_resolved << endl;
     ss << "osc_msgs_sent_per_sec: " << hits_per_second << " (per_sec)" << endl;
     ss << "osc_msgs_dropped_by_rate_limiter: " << hits_discarded_rate << " (per_sec)" << endl;
+    ss << "discarded_by_budget: " << discarded_by_budget_per_sec << " (per_sec) this_frame: " << discarded_by_budget_this_frame << endl;
     ss << "this_frame: validated " << validated_this_frame << " sent " << sent_this_frame << " dropped " << dropped_rate_this_frame << endl;
     ss << "---" << endl;
     ss << "Particles (total): " << particles.size() << endl;
@@ -1078,7 +1099,7 @@ void ofApp::drawDebugOverlay() {
 
     float x = 20.0f;
     float lineHeight = 14.0f;
-    int lineCount = 23;
+    int lineCount = 24;
     float y = ofGetHeight() - (lineCount * lineHeight) - 20.0f;
     if (y < 20.0f) y = 20.0f;
 

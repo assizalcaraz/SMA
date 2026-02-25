@@ -86,6 +86,9 @@ class ofApp : public ofBaseApp{
 		// Rest gate (Fase 1): umbral de velocidad normal para considerar colisión como "en reposo"
 		static const float REST_SPEED_EPSILON_FACTOR;  // e.g. 0.01f -> epsilon = factor * vel_ref
 		
+		// Presupuesto por frame (selección antes del token bucket)
+		float target_hits_per_second;  // Objetivo OSC/s (ej. 800); budget_frame = min(max_per_frame, ceil(target/fps))
+
 		// Parámetros de rate limiting
 		float max_hits_per_second;  // Máximo de hits por segundo (50-1000)
 		float burst;                // Burst máximo (100-1000)
@@ -117,6 +120,9 @@ class ofApp : public ofBaseApp{
 		int validated_this_frame;         // Validados en este frame (para overlay)
 		int sent_this_frame;              // Enviados por OSC en este frame
 		int dropped_rate_this_frame;      // Descartados por rate limiter en este frame
+		int discarded_by_budget_this_frame;  // Descartados por presupuesto por frame (top-energy selection)
+		int discarded_by_budget_per_sec;     // Descartados por presupuesto en el último segundo
+		int discarded_by_budget_accumulator; // Acumulador para calcular per_sec
 
 		// Grid espacial para colisiones partícula-partícula (broad-phase)
 		std::vector<std::vector<size_t>> grid;
