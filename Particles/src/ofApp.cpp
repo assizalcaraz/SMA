@@ -1,6 +1,7 @@
 #include "ofApp.h"
 #include <sstream>
 #include <cmath>
+#include <algorithm>
 
 //--------------------------------------------------------------
 void ofApp::setup(){
@@ -311,7 +312,7 @@ void ofApp::draw(){
         particlesMesh.getVertices()[i] = glm::vec3(particles[i].pos.x, particles[i].pos.y, 0.0f);
     }
     if (n > 0) {
-        particlesMesh.getVbo().updateVertexData(particlesMesh.getVertices().data(), kMaxParticles);
+        particlesMesh.getVbo().updateVertexData(particlesMesh.getVertices().data(), (int)n);
     }
     
     ofSetColor(255, 255, 255);
@@ -737,7 +738,10 @@ void ofApp::checkParticleCollisions() {
     collisions_resolved = 0;
 
     // Límite de corrección posicional por partícula por frame (plan 3.4)
-    std::vector<float> correction_used(particles.size(), 0.0f);
+    if (correction_used.size() != particles.size()) {
+        correction_used.resize(particles.size());
+    }
+    std::fill(correction_used.begin(), correction_used.end(), 0.0f);
     const float slop = 0.15f * particle_radius;
     const float correction_percent = 0.4f;
     const float e_clamped = ofClamp(restitution, 0.0f, 1.0f);

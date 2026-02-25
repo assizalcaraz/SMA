@@ -106,6 +106,8 @@ class ofApp : public ofBaseApp{
 		std::vector<std::vector<size_t>> grid;
 		int gridW;
 		int gridH;
+		// Buffer persistente para corrección posicional (evitar alloc por frame en checkParticleCollisions)
+		std::vector<float> correction_used;
 		// Métricas de instrumentación (obligatorias)
 		size_t narrow_phase_pairs_checked;
 		size_t collisions_resolved;
