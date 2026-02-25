@@ -94,6 +94,8 @@ void ofApp::setup(){
     discarded_by_budget_this_frame = 0;
     discarded_by_budget_per_sec = 0;
     discarded_by_budget_accumulator = 0;
+    sent_q0 = sent_q1 = sent_q2 = sent_q3 = 0;
+    discarded_by_budget_q0 = discarded_by_budget_q1 = discarded_by_budget_q2 = discarded_by_budget_q3 = 0;
 
     // Inicializar mouse
     mouse.pos = ofVec2f(0.5f, 0.5f);
@@ -299,27 +301,60 @@ void ofApp::update(){
     }
     p2p_collision_ms = (ofGetElapsedTimef() - t_p2p_start) * 1000.0f;
 
-    // Presupuesto por frame: selección por energía ANTES del token bucket (reduce volumen patológico)
+    // Presupuesto por frame con 4 cuadrantes (x,y normalizados; misma regla que PAS: x>=0.5, y>=0.5)
     float fps_estimate = ofGetFrameRate() > 1.0f ? ofGetFrameRate() : 60.0f;
     int budget_frame = (int)std::min((float)rate_limiter.max_per_frame, std::ceil(target_hits_per_second / fps_estimate));
     if (budget_frame < 1) budget_frame = 1;
 
     auto greater_energy = [](const HitEvent& a, const HitEvent& b) {
         if (a.energy != b.energy) return a.energy > b.energy;
-        return (a.id * 31 + (a.surface + 1)) < (b.id * 31 + (b.surface + 1));  // tie-break para fairness
+        return (a.id * 31 + (a.surface + 1)) < (b.id * 31 + (b.surface + 1));
     };
-    static const size_t max_pending_cap = 500;
-    if (pending_hits.size() > max_pending_cap) {
-        std::nth_element(pending_hits.begin(), pending_hits.begin() + (max_pending_cap - 1), pending_hits.end(), greater_energy);
-        pending_hits.resize(max_pending_cap);
+
+    // Repartir presupuesto por cuadrante (q0: x<0.5,y<0.5; q1: x>=0.5,y<0.5; q2: x<0.5,y>=0.5; q3: x>=0.5,y>=0.5)
+    int budget_q[4];
+    int b0 = budget_frame / 4;
+    int rem = budget_frame % 4;
+    for (int i = 0; i < 4; i++) budget_q[i] = b0 + (i < rem ? 1 : 0);
+
+    std::vector<HitEvent> q0, q1, q2, q3;
+    q0.reserve(pending_hits.size() / 4 + 1);
+    q1.reserve(pending_hits.size() / 4 + 1);
+    q2.reserve(pending_hits.size() / 4 + 1);
+    q3.reserve(pending_hits.size() / 4 + 1);
+    for (const auto& e : pending_hits) {
+        int q = (e.x >= 0.5f ? 2 : 0) + (e.y >= 0.5f ? 1 : 0);
+        if (q == 0) q0.push_back(e);
+        else if (q == 1) q1.push_back(e);
+        else if (q == 2) q2.push_back(e);
+        else q3.push_back(e);
     }
-    if (pending_hits.size() > (size_t)budget_frame) {
-        discarded_by_budget_this_frame = (int)(pending_hits.size() - (size_t)budget_frame);
-        std::nth_element(pending_hits.begin(), pending_hits.begin() + (budget_frame - 1), pending_hits.end(), greater_energy);
-        pending_hits.resize(budget_frame);
-        std::partial_sort(pending_hits.begin(), pending_hits.begin() + budget_frame, pending_hits.end(), greater_energy);
-    }
+
+    auto select_top = [&greater_energy](std::vector<HitEvent>& vec, int budget, int& discard_count) {
+        if ((int)vec.size() <= budget) { discard_count = 0; return; }
+        discard_count = (int)vec.size() - budget;
+        std::nth_element(vec.begin(), vec.begin() + (budget - 1), vec.end(), greater_energy);
+        vec.resize(budget);
+        std::partial_sort(vec.begin(), vec.begin() + budget, vec.end(), greater_energy);
+    };
+    int d0 = 0, d1 = 0, d2 = 0, d3 = 0;
+    select_top(q0, budget_q[0], d0);
+    select_top(q1, budget_q[1], d1);
+    select_top(q2, budget_q[2], d2);
+    select_top(q3, budget_q[3], d3);
+
+    discarded_by_budget_q0 += d0;
+    discarded_by_budget_q1 += d1;
+    discarded_by_budget_q2 += d2;
+    discarded_by_budget_q3 += d3;
+    discarded_by_budget_this_frame = d0 + d1 + d2 + d3;
     discarded_by_budget_accumulator += discarded_by_budget_this_frame;
+
+    pending_hits.clear();
+    for (const auto& e : q0) pending_hits.push_back(e);
+    for (const auto& e : q1) pending_hits.push_back(e);
+    for (const auto& e : q2) pending_hits.push_back(e);
+    for (const auto& e : q3) pending_hits.push_back(e);
 
     // Token bucket como red de seguridad (processPendingHits)
     // Procesar eventos pendientes con rate limiting
@@ -331,6 +366,11 @@ void ofApp::update(){
             sendHitEvent(event);
             hits_sent_osc++;
             sent_this_frame++;
+            int q = (event.x >= 0.5f ? 2 : 0) + (event.y >= 0.5f ? 1 : 0);
+            if (q == 0) sent_q0++;
+            else if (q == 1) sent_q1++;
+            else if (q == 2) sent_q2++;
+            else sent_q3++;
         }
         
         // Enviar mensaje /state periódicamente (10 Hz durante actividad)
@@ -365,6 +405,8 @@ void ofApp::update(){
         hits_discarded_low_energy = 0;
         discarded_by_budget_per_sec = discarded_by_budget_accumulator;
         discarded_by_budget_accumulator = 0;
+        sent_q0 = sent_q1 = sent_q2 = sent_q3 = 0;
+        discarded_by_budget_q0 = discarded_by_budget_q1 = discarded_by_budget_q2 = discarded_by_budget_q3 = 0;
     }
     update_total_ms = (ofGetElapsedTimef() - t_update_start) * 1000.0f;
 }
@@ -1083,6 +1125,8 @@ void ofApp::drawDebugOverlay() {
     ss << "osc_msgs_sent_per_sec: " << hits_per_second << " (per_sec)" << endl;
     ss << "osc_msgs_dropped_by_rate_limiter: " << hits_discarded_rate << " (per_sec)" << endl;
     ss << "discarded_by_budget: " << discarded_by_budget_per_sec << " (per_sec) this_frame: " << discarded_by_budget_this_frame << endl;
+    ss << "sent_q0: " << sent_q0 << " q1: " << sent_q1 << " q2: " << sent_q2 << " q3: " << sent_q3 << " (per_sec)" << endl;
+    ss << "discard_budget q0: " << discarded_by_budget_q0 << " q1: " << discarded_by_budget_q1 << " q2: " << discarded_by_budget_q2 << " q3: " << discarded_by_budget_q3 << endl;
     ss << "this_frame: validated " << validated_this_frame << " sent " << sent_this_frame << " dropped " << dropped_rate_this_frame << endl;
     ss << "---" << endl;
     ss << "Particles (total): " << particles.size() << endl;
@@ -1100,7 +1144,7 @@ void ofApp::drawDebugOverlay() {
 
     float x = 20.0f;
     float lineHeight = 14.0f;
-    int lineCount = 24;
+    int lineCount = 26;
     float y = ofGetHeight() - (lineCount * lineHeight) - 20.0f;
     if (y < 20.0f) y = 20.0f;
 

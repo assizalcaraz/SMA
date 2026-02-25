@@ -123,6 +123,14 @@ class ofApp : public ofBaseApp{
 		int discarded_by_budget_this_frame;  // Descartados por presupuesto por frame (top-energy selection)
 		int discarded_by_budget_per_sec;     // Descartados por presupuesto en el último segundo
 		int discarded_by_budget_accumulator; // Acumulador para calcular per_sec
+		int sent_q0;  // Enviados cuadrante x<0.5,y<0.5 (per_sec)
+		int sent_q1;  // x>=0.5,y<0.5
+		int sent_q2;  // x<0.5,y>=0.5
+		int sent_q3;  // x>=0.5,y>=0.5
+		int discarded_by_budget_q0;  // Descartados por presupuesto por cuadrante (per_sec)
+		int discarded_by_budget_q1;
+		int discarded_by_budget_q2;
+		int discarded_by_budget_q3;
 
 		// Grid espacial para colisiones partícula-partícula (broad-phase)
 		std::vector<std::vector<size_t>> grid;
