@@ -398,8 +398,7 @@ void SynthesisEngine::processEventQueue()
         {
             const FusedHitSnapshot& s = fusedQueue[start1 + i];
             auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
-            float br = s.isBorder ? s.brightness * 0.92f : s.brightness; // M3: border slightly darker
-            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, br, s.metalness,
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
                                      wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
             hitsTriggered.fetch_add(1, std::memory_order_relaxed);
         }
@@ -407,8 +406,7 @@ void SynthesisEngine::processEventQueue()
         {
             const FusedHitSnapshot& s = fusedQueue[start2 + i];
             auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
-            float br = s.isBorder ? s.brightness * 0.92f : s.brightness; // M3: border slightly darker
-            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, br, s.metalness,
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
                                      wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
             hitsTriggered.fetch_add(1, std::memory_order_relaxed);
         }
