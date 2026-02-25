@@ -45,14 +45,15 @@ Documento para que un revisor externo audite el módulo PAS del SMA: archivos re
 
 | Ruta | Propósito |
 |------|-----------|
-| `app-juce/app-JUCE-PAS1/Source/MainComponent.cpp` | Sliders: Voices (4–12), Metalness, Brightness, Damping, SubOsc Mix, Pitch Range; ComboBox Waveform; Toggle Clipper; Botón Test Trigger. Controles de Plate eliminados en v1 (PlateSynth deshabilitado por defecto; `enablePlateSynth` permite reactivar). Labels: Output dB, Active Voices, Hit Coverage, Hits triggered/received/discarded, OSC status, OSC messages/s. `globalPresence` se guarda desde `/state` pero no se aplica a ganancia master (pendiente). |
+| `app-juce/app-JUCE-PAS1/Source/MainComponent.cpp` | Sliders: Voices (4–12), Metalness, Brightness, Damping, SubOsc Mix, Pitch Range; ComboBox Waveform; Toggle Clipper; Botón Test Trigger. Controles de Plate eliminados (PlateSynth deshabilitado por defecto; `enablePlateSynth` permite reactivar). Labels: Output dB, Active Voices, Hit Coverage, Hits triggered/received/discarded, **M2 Fusion** (raw, fused produced/enqueued/dropped, coverage, queue loss), OSC status, OSC messages/s. `enableFusionAggregation` (default ON): M2 fusion 20 ms / 4 cuadrantes. |
 
 ### Diagnósticos y constantes
 
 | Ubicación | Detalle |
 |-----------|---------|
-| `SynthesisEngine.h` | `MAX_HITS_PER_BLOCK = 32`, `EVENT_QUEUE_SIZE = 128`; `hitsReceived`, `hitsTriggered`, `hitsDiscarded` atómicos; `getHitCoverageRatio()` = triggered/received. |
-| `SynthesisEngine.cpp` processEventQueue | Si `available > MAX_HITS_PER_BLOCK * 2` entonces `numToRead = MAX_HITS_PER_BLOCK / 2` (16). |
+| `SynthesisEngine.h` | `MAX_HITS_PER_BLOCK = 32`, `EVENT_QUEUE_SIZE = 128`, `FUSED_QUEUE_SIZE = 256`; `hitsReceived`, `hitsTriggered`, `hitsDiscarded`, `fusedHitsEnqueued`, `fusedHitsDiscardedQueue` atómicos; `getHitCoverageRatio()` = triggered/received. |
+| `SynthesisEngine.cpp` processEventQueue | Fused queue drenada primero (pan constant-power por snapshot); luego cola cruda. Si `available > MAX_HITS_PER_BLOCK * 2` entonces `numToRead = MAX_HITS_PER_BLOCK / 2` (16). |
+| `HitAggregator`, `FusedHitSnapshot` | M2 fusion: ventana 20 ms, 4 cuadrantes; border -3 dB y -3 semitones; pan gL/gR constant-power. |
 | — | No hay profiling hooks adicionales; comentarios DBG en prepareToPlay. |
 
 ---
@@ -110,11 +111,15 @@ Detalle completo en [OSC_SCHEMA.md](OSC_SCHEMA.md).
 - **PAS:** (1) Cola llena: si eventFifo no tiene espacio, triggerVoiceFromOSC descarta y hitsDiscarded++. (2) Por bloque de audio: processEventQueue lee como máximo MAX_HITS_PER_BLOCK (32) por bloque; si hay >64 pendientes, lee solo 16. Con 48 kHz y bloque 512, ~94 bloques/s → máximo ~3008 eventos/s teóricos si siempre 32/block; en práctica la cola se llena si ISTR envía más de lo que se drena. (3) Voice stealing: solo maxVoices (4–12) sonidos simultáneos; hits que llegan cuando no hay voz libre reutilizan la de menor amplitud residual (o más antigua) — no se “pierden” pero un hit reemplaza a otro. (4) **/plate:** con bypass de PlateSynth activo, los mensajes `/plate` se ignoran en ingestión (no se llama a triggerPlateFromOSC); no afectan la salida de audio.
 - **Conclusión breve:** A alto número de partículas, ISTR genera muchos más eventos (border + p-p); el rate limiter (50/frame, 800/s) y el cooldown recortan; luego PAS puede recibir aún más de los que puede procesar por bloque (32 o 16) y/o cola 128, y además solo maxVoices sonidos simultáneos. La percepción de “menos golpes de los que se ven” es coherente con: throttling en ISTR + cola/capa por bloque + polyphony limitada en PAS.
 
+### M2 - Multi-Event Fusion (20 ms, 4 cuadrantes)
+
+Con `enableFusionAggregation = true` (default), los `/hit` se acumulan en **HitAggregator** por cuadrante en ventanas de 20 ms. Cada 20 ms se emiten hasta 4 **FusedHitSnapshot** (uno por cuadrante no vacío) a la cola fused (FUSED_QUEUE_SIZE 256). El audio thread drena fused primero; pan constant-power (gL/gR) se aplica en VoiceManager. **Border vs p2p:** eventos predominantemente de borde reciben -3 dB y -3 semitones. Métricas UI: rawHitsReceived, fusedProduced, fusedEnqueued, fusedDroppedQueue, coverage_raw_to_fused, queue_loss. Máx. ~200 fused/s.
+
 ---
 
 ## F) Diagrama de flujo de datos (ASCII)
 
-Comportamiento actual: `/hit` y `/state` se procesan; `/plate` se procesa solo si el bypass de PlateSynth está desactivado. **Con bypass activo**, la rama `/plate` no se ejecuta y la salida de audio no depende de `/plate`.
+Comportamiento actual: `/hit` y `/state` se procesan; `/plate` se procesa solo si el bypass de PlateSynth está desactivado. Con M2 fusion ON, `/hit` va a HitAggregator y no a la cola cruda. **Con bypass activo**, la rama `/plate` no se ejecuta y la salida de audio no depende de `/plate`.
 
 ```
 ISTR (oF)                          PAS (JUCE)
@@ -153,7 +158,8 @@ getNextAudioBlock() [audio thread]
 
 | Lugar | Constante | Valor | Efecto |
 |-------|-----------|-------|--------|
-| SynthesisEngine | EVENT_QUEUE_SIZE | 128 | Cola de HitEvent; si llena, descarte |
+| SynthesisEngine | EVENT_QUEUE_SIZE | 128 | Cola de HitEvent crudos; si llena, descarte |
+| SynthesisEngine | FUSED_QUEUE_SIZE | 256 | Cola de FusedHitSnapshot (M2); overflow → fusedHitsDiscardedQueue |
 | SynthesisEngine | MAX_HITS_PER_BLOCK | 32 | Máx. eventos leídos por bloque de audio |
 | SynthesisEngine | (backlog) | available > 64 | Entonces numToRead = 16 |
 | VoiceManager | maxVoices | 4–12 | Voces activas; voice stealing si todas ocupadas |

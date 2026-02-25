@@ -34,9 +34,9 @@ OSC (/hit, /state, /plate)  →  MainComponent  →  Cola lock-free (HitEvent)
 | **PlateSynth** | `Source/PlateSynth.h`, `.cpp` | Síntesis de placa: 6 modos, excitación por ruido, 8 modos de placa (0–7), fail-safe 2 s sin updates. |
 | **MainComponent** | `Source/MainComponent.h`, `.cpp` | UI, receptor OSC (puerto 9000), mapeo `/hit` → parámetros de síntesis y llamada a `triggerVoiceFromOSC`. |
 
-## Agregación multi-evento (v1, opcional)
+## M2 - Multi-Event Fusion (20 ms, 4 cuadrantes)
 
-Con **agregación activa** (`enableAggregation = true`, por defecto en v1), los mensajes `/hit` no se encolan como eventos crudos: se acumulan en **HitAggregator** por cuadrante (4 quads) en ventanas de 20 ms. Al cerrar cada ventana se generan hasta 4 **FusedHitSnapshot** (uno por cuadrante no vacío) que se escriben en una **cola lock-free de fused** (FUSED_QUEUE_SIZE 256). El **audio thread** drena esta cola en `processEventQueue` y llama a `triggerVoice` por cada snapshot; el pan (gL/gR constant-power) se aplica por voz en VoiceManager. Así se reduce el número de eventos audibles y se mejora la cobertura cuando hay muchas partículas. Rollback: `enableAggregation = false` restaura el flujo de hits crudos a la cola original.
+Con **fusión activa** (`enableFusionAggregation = true`, por defecto), los mensajes `/hit` no se encolan como eventos crudos: se acumulan en **HitAggregator** por cuadrante (4 quads) en ventanas de 20 ms. Un timer en el message thread cierra la ventana cada 20 ms; se generan hasta 4 **FusedHitSnapshot** (uno por cuadrante no vacío) que se escriben en la **cola lock-free de fused** (FUSED_QUEUE_SIZE 256). El **audio thread** drena esta cola en `processEventQueue` y llama a `triggerVoice` por cada snapshot. **Pan estereo:** constant-power (gL = sqrt(0.5*(1-pan)), gR = sqrt(0.5*(1+pan))) aplicado en la etapa de mezcla en VoiceManager. **Clase border vs p2p:** eventos predominantemente de borde (surface 0..3) reciben -3 dB en amplitud y -3 semitonos en baseFreq respecto a p2p (surface -1). Máximo ~200 eventos fusionados/s (4 por ventana × 50 ventanas/s). Rollback: `enableFusionAggregation = false` restaura el flujo de hits crudos.
 
 ## Presupuesto de voces por cuadrante (R4)
 
@@ -88,5 +88,6 @@ Con **agregación activa** (`enableAggregation = true`, por defecto en v1), los 
 
 - **Hits received / triggered / discarded:** contadores atómicos; `hitsReceived` se incrementa al escribir en cola (si hay espacio), `hitsTriggered` al procesar en audio thread, `hitsDiscarded` cuando la cola está llena.
 - **Hit Coverage:** `hits_triggered / hits_received` (ratio). Objetivo típico de evaluación: ≥90% en escenario normal.
+- **M2 fusion (rama pas-m2-fusion):** raw (hits recibidos), fused produced / enqueued / dropped, coverage_raw_to_fused (fusedEnqueued/rawHitsReceived), queue_loss (fusedDroppedQueue/fusedProduced). Máx. ~200 fused/s.
 - **Output level:** RMS aproximado de la salida.
 - **Active voices:** número de voces activas en el VoiceManager.
