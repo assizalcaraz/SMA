@@ -2,7 +2,7 @@
 
 Manual de usuario del módulo de partículas. Guía completa de parámetros y uso.
 
-**Última actualización:** v0.2 - Controles visuales y cámara agregados
+**Última actualización:** v0.4 — Mejoras post-evaluación (grid espacial, plate precomputado, VBO, instrumentación)
 
 ---
 
@@ -591,8 +591,27 @@ max_hits/frame: 9
 
 - Todos los parámetros son ajustables en tiempo real sin reiniciar la aplicación
 - Los cambios se aplican inmediatamente en el siguiente frame
-- El sistema está optimizado para mantener FPS ≥ 45 con N=2000 partículas
+- El sistema está optimizado para mantener tiempo de frame ≤ 33 ms (objetivo ~30 FPS) con N hasta 8000 en máquina de referencia
 - Los valores por defecto están calibrados para una experiencia balanceada
+- **dt** se calcula una sola vez por frame (centralizado) y se limita a un máximo equivalente a 30 FPS para estabilidad
+
+### Overlay de métricas (instrumentación)
+
+En la esquina inferior izquierda se muestra un overlay con las siguientes métricas (actualizadas cada frame; contadores por segundo cada 1 s):
+
+| Métrica | Descripción |
+|--------|-------------|
+| **FPS** | Fotogramas por segundo (media móvil ~1 s) |
+| **update_total_ms** | Tiempo total de `update()` en ms |
+| **p2p_collision_ms** | Tiempo del paso de colisiones partícula–partícula en ms |
+| **plate_force_ms** | Tiempo de `applyPlateForce()` en ms |
+| **draw_ms** | Tiempo de dibujado de partículas en ms |
+| **narrow_phase_pairs_checked** | Parejas comprobadas en narrow-phase (colisiones) |
+| **collisions_resolved** | Colisiones en las que se aplicó impulso |
+| **osc_msgs_sent_per_sec** | Mensajes OSC enviados por segundo |
+| **osc_msgs_dropped_by_rate_limiter** | Mensajes descartados por rate limiter |
+
+Estas métricas permiten validar rendimiento y correctitud (p. ej. que `narrow_phase_pairs_checked` sea mucho menor que N²/2 con el grid espacial activo).
 
 ---
 
@@ -634,6 +653,15 @@ max_hits/frame: 9
   - Clamp de `dt` para consistencia FPS (máximo 30fps equivalente)
   - Clamp relativo de fuerza shaker (`F_SHAKER_MAX = 0.5 * F_MAX`)
   - Preservación completa de comportamiento v0.2 cuando Chladni State está OFF
+
+**v0.4 (Mejoras post-evaluación — rendimiento y robustez):**
+- **dt centralizado:** Un único `dt` por frame con fallback y clamp (máx. 1/30 s); usado en integración, gesto, plate, rate limiter y OSC.
+- **Grid espacial para colisiones:** Detección partícula–partícula con broad-phase en grid 2D fijo (cell_size = 2×particle_radius). Vecindario 3×3; partículas fuera de límites se asignan a celda borde. Reduce coste de O(N²) a O(N) esperado; escalable hasta N≈8000.
+- **Resolución de impulso:** Física con velocidades actuales (`p.vel`); `vel_pre` solo para energía del evento OSC. Impulso correcto (n de p2 a p1, masas iguales). Corrección posicional con slop (10–20% del radio), percent (0.2–0.5) y límite por partícula por frame. Reglas obligatorias: epsilon 1e-6, restitución [0,1].
+- **Campo Chladni precomputado:** Grid 2D (∇E y U) de 128×128; rebuild cuando cambian mode/tamaño, con debounce de 50 ms (`plateDirty`). `applyPlateForce()` solo hace muestreo bilinear + escalado (+ amortiguación en nodos y shaker); sin trig/gradientes por partícula.
+- **Render con VBO:** Mesh de puntos preasignado (hasta 8000 vértices); actualización con `updateVertexData()`. Tamaño de punto mediante shader de vértice (uniform `uPointSize`); fallback a `glPointSize` si el shader no carga. Sin `glBegin`/`glEnd`.
+- **Instrumentación:** Overlay obligatorio con FPS, update_total_ms, p2p_collision_ms, plate_force_ms, draw_ms, narrow_phase_pairs_checked, collisions_resolved, osc_msgs_sent_per_sec, osc_msgs_dropped_by_rate_limiter.
+- **Criterios de aceptación:** Tiempo medio de frame ≤ 33 ms en máquina de referencia; sin explosiones ni penetraciones persistentes; documentar especificaciones de la máquina usada para validación.
 
 ---
 

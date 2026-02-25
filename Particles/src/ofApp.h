@@ -90,6 +90,9 @@ class ofApp : public ofBaseApp{
 		
 		// Rate limiter
 		RateLimiter rate_limiter;
+
+		// dt centralizado (una sola fuente por frame; clamp en update())
+		float dt_sec;
 		
 		// Contadores de debug
 		float hits_per_second;           // Promedio móvil de hits/seg
@@ -98,6 +101,19 @@ class ofApp : public ofBaseApp{
 		int hits_this_second;             // Contador temporal para hits/seg
 		float time_accumulator;           // Acumulador de tiempo para hits/seg
 		int particles_rendered_this_frame; // Contador de partículas renderizadas en este frame
+
+		// Grid espacial para colisiones partícula-partícula (broad-phase)
+		std::vector<std::vector<size_t>> grid;
+		int gridW;
+		int gridH;
+		// Métricas de instrumentación (obligatorias)
+		size_t narrow_phase_pairs_checked;
+		size_t collisions_resolved;
+		// Tiempos por frame (ms) para overlay
+		float update_total_ms;
+		float p2p_collision_ms;
+		float plate_force_ms;
+		float draw_ms;
 		
 		// Vectores temporales
 		std::vector<HitEvent> pending_hits;    // Eventos generados en este frame
@@ -151,6 +167,23 @@ class ofApp : public ofBaseApp{
 		bool chladniState;         // Estado actual: ON/OFF
 		float k_home_previous;      // Valor guardado de k_home antes de activar Chladni
 		float plateShakerStrength; // Intensidad del Plate Shaker, constante ajustable
+
+		// Campo plate precomputado (grid ∇E + U para muestreo bilinear; plan 4.1)
+		std::vector<ofVec2f> plateGradE;
+		std::vector<float> plateU;
+		int gridPlateW;
+		int gridPlateH;
+		bool plateDirty;
+		float lastPlateRebuildTime;
+		int lastBuiltPlateMode;
+		float lastBuiltPlateWidth;
+		float lastBuiltPlateHeight;
+		void rebuildPlateField(int mode, float plateSizeX, float plateSizeY);
+		
+		// VBO para render de partículas (plan 4.2): preasignado, updateVertexData, point size por shader
+		static const int kMaxParticles = 8000;
+		ofVboMesh particlesMesh;
+		ofShader pointsShader;
 		
 		// Funciones auxiliares
 		void initializeParticles(int n);
