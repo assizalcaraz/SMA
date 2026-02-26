@@ -5,10 +5,12 @@ VoiceManager::VoiceManager()
 {
     maxVoices = DEFAULT_MAX_VOICES;
     
-    // RT-SAFE: Inicializar array de tiempos de trigger
+    // RT-SAFE: Inicializar array de tiempos de trigger y pan
     for (int i = 0; i < MAX_VOICES_LIMIT; i++)
     {
         voiceTriggerTime[i] = -1;
+        voiceGainL[i] = 1.0f;
+        voiceGainR[i] = 1.0f;
     }
 }
 
@@ -46,35 +48,31 @@ void VoiceManager::prepare(double sampleRate, int maxVoicesToSet)
 //==============================================================================
 void VoiceManager::setMaxVoices(int newMaxVoices)
 {
-    // RT-SAFE: Solo actualiza el límite activo, no modifica el array pre-allocado
-    // Las voces ya están pre-allocadas en prepare(), solo cambiamos cuántas están "activas"
     newMaxVoices = juce::jlimit(MIN_VOICES_LIMIT, MAX_VOICES_LIMIT, newMaxVoices);
-    
     if (newMaxVoices == maxVoices)
         return;
-    
     maxVoices = newMaxVoices;
-    // No hay allocations ni modificaciones del array aquí - todo está pre-allocado
+}
+
+void VoiceManager::setMaxVoicesPerQuadrant(int n)
+{
+    maxVoicesPerQuadrant = juce::jlimit(0, 8, n);
 }
 
 //==============================================================================
 void VoiceManager::triggerVoice(float baseFreq, float amplitude, float damping, 
                                  float brightness, float metalness,
                                  ModalVoice::ExcitationWaveform waveform,
-                                 float subOscMix)
+                                 float subOscMix,
+                                 float gainL, float gainR,
+                                 int quadrant)
 {
-    // RT-SAFE: Verificar que hay voces disponibles
     if (maxVoices == 0 || voices.size() == 0)
         return;
     
-    // RT-SAFE: Buscar solo dentro del rango activo (maxVoices)
-    ModalVoice* voiceToUse = findAvailableVoice();
-    
-    // Si no hay voces disponibles, robar una
+    ModalVoice* voiceToUse = findAvailableVoice(quadrant);
     if (voiceToUse == nullptr)
-    {
-        voiceToUse = findVoiceToSteal();
-    }
+        voiceToUse = findVoiceToSteal(quadrant);
     
     if (voiceToUse != nullptr)
     {
@@ -95,9 +93,12 @@ void VoiceManager::triggerVoice(float baseFreq, float amplitude, float damping,
         voiceToUse->setParameters(baseFreq, amplitude, damping, brightness, metalness, waveform, subOscMix);
         voiceToUse->trigger();
         
-        // Actualizar tiempo de trigger
         if (voiceIndex >= 0)
+        {
             updateVoiceTime(voiceIndex);
+            voiceGainL[voiceIndex] = gainL;
+            voiceGainR[voiceIndex] = gainR;
+        }
     }
 }
 
@@ -125,15 +126,15 @@ void VoiceManager::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSa
         if (!voice->isActive())
             continue;
         
-        // Renderizar todos los samples de esta voz de una vez
+        // Stereo mix: constant-power pan (gL = sqrt(0.5*(1-pan)), gR = sqrt(0.5*(1+pan))) per voice
+        float gL = voiceGainL[i];
+        float gR = voiceGainR[i];
         for (int sample = 0; sample < numSamples; sample++)
         {
             float sampleValue = voice->renderNextSample();
-            
-            // Sumar directamente a los canales (más eficiente que addSample)
-            leftChannel[sample] += sampleValue;
+            leftChannel[sample] += sampleValue * gL;
             if (rightChannel != nullptr)
-                rightChannel[sample] += sampleValue;
+                rightChannel[sample] += sampleValue * gR;
         }
     }
     
@@ -171,77 +172,100 @@ void VoiceManager::resetAll()
         }
     }
     
-    // Resetear tiempos de trigger
+    // Resetear tiempos de trigger y pan
     for (int i = 0; i < MAX_VOICES_LIMIT; i++)
     {
         voiceTriggerTime[i] = -1;
+        voiceGainL[i] = 1.0f;
+        voiceGainR[i] = 1.0f;
     }
     
     currentTime = 0;
 }
 
 //==============================================================================
-ModalVoice* VoiceManager::findAvailableVoice()
+ModalVoice* VoiceManager::findAvailableVoice(int quadrant)
 {
-    // RT-SAFE: Buscar solo dentro del rango activo (maxVoices)
-    // Verificar que hay voces disponibles
     if (maxVoices == 0 || voices.size() == 0)
         return nullptr;
     
-    int searchLimit = juce::jmin(maxVoices, voices.size());
+    int searchLimit = juce::jmin(maxVoices, (int)voices.size());
+    int reservedTotal = 4 * maxVoicesPerQuadrant;
+    
+    if (quadrant >= 0 && quadrant < 4 && reservedTotal <= maxVoices)
+    {
+        // Primero buscar en el presupuesto del cuadrante
+        int quadStart = quadrant * maxVoicesPerQuadrant;
+        int quadEnd = juce::jmin(quadStart + maxVoicesPerQuadrant, searchLimit);
+        for (int i = quadStart; i < quadEnd; i++)
+        {
+            auto* voice = voices.getUnchecked(i);
+            if (!voice->isActive())
+                return voice;
+        }
+        // Luego en el pool compartido
+        for (int i = reservedTotal; i < searchLimit; i++)
+        {
+            auto* voice = voices.getUnchecked(i);
+            if (!voice->isActive())
+                return voice;
+        }
+        return nullptr;
+    }
+    
     for (int i = 0; i < searchLimit; i++)
     {
         auto* voice = voices.getUnchecked(i);
         if (!voice->isActive())
-        {
             return voice;
-        }
     }
     return nullptr;
 }
 
 //==============================================================================
-ModalVoice* VoiceManager::findVoiceToSteal()
+ModalVoice* VoiceManager::findVoiceToSteal(int quadrant)
 {
     if (maxVoices == 0 || voices.size() == 0)
         return nullptr;
     
-    // RT-SAFE: Buscar solo dentro del rango activo (maxVoices)
-    // Optimizado: buscar voz con menor amplitud residual o más antigua
-    int searchLimit = juce::jmin(maxVoices, voices.size());
-    ModalVoice* bestVoice = voices.getUnchecked(0);
-    float minAmplitude = bestVoice->getResidualAmplitude();
-    int bestIndex = 0;
-    int oldestTime = voiceTriggerTime[0];
+    int searchLimit = juce::jmin(maxVoices, (int)voices.size());
+    int reservedTotal = 4 * maxVoicesPerQuadrant;
     
-    for (int i = 1; i < searchLimit; i++)
+    auto findBestInRange = [this, searchLimit](int start, int end) -> ModalVoice* {
+        ModalVoice* best = nullptr;
+        float minAmp = 1e9f;
+        int oldestTime = 2147483647;
+        for (int i = start; i < end && i < searchLimit; i++)
+        {
+            auto* v = voices.getUnchecked(i);
+            if (!v->isActive()) continue;
+            float a = v->getResidualAmplitude();
+            int t = voiceTriggerTime[i];
+            if (best == nullptr || a < minAmp || (std::abs(a - minAmp) < 0.0001f && t < oldestTime))
+            {
+                best = v;
+                minAmp = a;
+                oldestTime = t;
+            }
+        }
+        return best;
+    };
+    
+    ModalVoice* toSteal = nullptr;
+    if (quadrant >= 0 && quadrant < 4 && reservedTotal <= maxVoices)
     {
-        auto* voice = voices.getUnchecked(i);
-        float amplitude = voice->getResidualAmplitude();
-        int triggerTime = voiceTriggerTime[i];
-        
-        // Priorizar menor amplitud residual
-        if (amplitude < minAmplitude)
-        {
-            bestVoice = voice;
-            minAmplitude = amplitude;
-            bestIndex = i;
-            oldestTime = triggerTime;
-        }
-        // Si hay empate en amplitud, elegir la más antigua
-        else if (std::abs(amplitude - minAmplitude) < 0.0001f && triggerTime < oldestTime)
-        {
-            bestVoice = voice;
-            minAmplitude = amplitude;
-            bestIndex = i;
-            oldestTime = triggerTime;
-        }
+        int quadStart = quadrant * maxVoicesPerQuadrant;
+        int quadEnd = juce::jmin(quadStart + maxVoicesPerQuadrant, searchLimit);
+        toSteal = findBestInRange(quadStart, quadEnd);
+        if (!toSteal)
+            toSteal = findBestInRange(reservedTotal, searchLimit);
     }
+    if (!toSteal)
+        toSteal = findBestInRange(0, searchLimit);
     
-    // Resetear la voz robada
-    bestVoice->reset();
-    
-    return bestVoice;
+    if (toSteal)
+        toSteal->reset();
+    return toSteal;
 }
 
 //==============================================================================
@@ -269,18 +293,6 @@ void VoiceManager::updateGlobalParameters(float metalness, float brightness, flo
         
         // Solo actualizar voces activas
         if (voice->isActive())
-        {
-            // Obtener parámetros actuales de la voz y actualizar solo los globales
-            // Mantener waveform y subOscMix actuales (no se actualizan en updateGlobalParameters)
-            voice->setParameters(
-                voice->getCurrentBaseFreq(),
-                voice->getCurrentAmplitude(),
-                damping,
-                brightness,
-                metalness,
-                ModalVoice::ExcitationWaveform::Noise, // Default, se mantiene el waveform de cada voz
-                0.0f // Default subOscMix, se mantiene el valor actual
-            );
-        }
+            voice->setGlobalParametersOnly(metalness, brightness, damping);
     }
 }

@@ -82,31 +82,79 @@ class ofApp : public ofBaseApp{
 		float dist_ref;          // Distancia de referencia para energía (20-100)
 		float energy_a;          // Peso de velocidad en energía (0.5-0.9)
 		float energy_b;          // Peso de distancia en energía (0.1-0.5)
+
+		// Rest gate (Fase 1): umbral de velocidad normal para considerar colisión como "en reposo"
+		static const float REST_SPEED_EPSILON_FACTOR;  // e.g. 0.01f -> epsilon = factor * vel_ref
 		
+		// Presupuesto por frame (selección antes del token bucket)
+		float target_hits_per_second;  // Objetivo OSC/s (ej. 800); budget_frame = min(max_per_frame, ceil(target/fps))
+
 		// Parámetros de rate limiting
 		float max_hits_per_second;  // Máximo de hits por segundo (50-1000)
 		float burst;                // Burst máximo (100-1000)
-		int max_hits_per_frame;     // Máximo de hits por frame (5-50)
+		int max_hits_per_frame;     // Máximo de hits por frame (5-50) — global
+		float max_hits_border_per_second;  // Fase 4: presupuesto borde (menor que p2p)
+		float max_hits_pp_per_second;      // Fase 4: presupuesto partícula-partícula
 		
-		// Rate limiter
-		RateLimiter rate_limiter;
+		// Rate limiter: un bucket por tipo + límite global por frame
+		RateLimiter rate_limiter;           // usa max_per_frame y hits_this_frame (global)
+		RateLimiter rate_limiter_border;    // tokens, rate, burst para borde
+		RateLimiter rate_limiter_pp;        // tokens, rate, burst para p2p
+
+		// dt centralizado (una sola fuente por frame; clamp en update())
+		float dt_sec;
 		
-		// Contadores de debug
+		// Contadores de debug (Fase 2: audit D.1)
 		float hits_per_second;           // Promedio móvil de hits/seg
 		int hits_discarded_rate;         // Hits descartados por rate limiting
 		int hits_discarded_cooldown;      // Hits descartados por cooldown
 		int hits_this_second;             // Contador temporal para hits/seg
 		float time_accumulator;           // Acumulador de tiempo para hits/seg
 		int particles_rendered_this_frame; // Contador de partículas renderizadas en este frame
+		int hits_candidate_border;        // Invocaciones generateHitEvent que pasan rest gate
+		int hits_candidate_p2p;          // Invocaciones generateParticleHitEvent que pasan rest gate
+		int hits_added_pending;           // Eventos añadidos a pending_hits en el frame
+		int hits_validated;               // Eventos que pasan canEmitHit (per-sec, reset cada 1s)
+		int hits_sent_osc;                // Eventos enviados por OSC (per-sec, solo cuando oscEnabled)
+		int hits_discarded_low_energy;    // Descartados por energy < ENERGY_FLOOR
+		int validated_this_frame;         // Validados en este frame (para overlay)
+		int sent_this_frame;              // Enviados por OSC en este frame
+		int dropped_rate_this_frame;      // Descartados por rate limiter en este frame
+		int discarded_by_budget_this_frame;  // Descartados por presupuesto por frame (top-energy selection)
+		int discarded_by_budget_per_sec;     // Descartados por presupuesto en el último segundo
+		int discarded_by_budget_accumulator; // Acumulador para calcular per_sec
+		int sent_q0;  // Enviados cuadrante x<0.5,y<0.5 (per_sec)
+		int sent_q1;  // x>=0.5,y<0.5
+		int sent_q2;  // x<0.5,y>=0.5
+		int sent_q3;  // x>=0.5,y>=0.5
+		int discarded_by_budget_q0;  // Descartados por presupuesto por cuadrante (per_sec)
+		int discarded_by_budget_q1;
+		int discarded_by_budget_q2;
+		int discarded_by_budget_q3;
+
+		// Grid espacial para colisiones partícula-partícula (broad-phase)
+		std::vector<std::vector<size_t>> grid;
+		int gridW;
+		int gridH;
+		// Buffer persistente para corrección posicional (evitar alloc por frame en checkParticleCollisions)
+		std::vector<float> correction_used;
+		// Métricas de instrumentación (obligatorias)
+		size_t narrow_phase_pairs_checked;
+		size_t collisions_resolved;
+		// Tiempos por frame (ms) para overlay
+		float update_total_ms;
+		float p2p_collision_ms;
+		float plate_force_ms;
+		float draw_ms;
 		
 		// Vectores temporales
 		std::vector<HitEvent> pending_hits;    // Eventos generados en este frame
 		std::vector<HitEvent> validated_hits;  // Eventos validados (para futuro OSC)
 		
 		// OSC
-		ofxOscSender oscSender;
+		ofxOscSender oscSender;               // Sender a JUCE (puerto 9000)
 		std::string oscHost;                   // Host destino (default: 127.0.0.1)
-		int oscPort;                           // Puerto destino (default: 9000)
+		int oscPort;                          // Puerto destino (default: 9000)
 		bool oscEnabled;                       // Habilitar/deshabilitar OSC
 		float stateSendInterval;              // Intervalo para enviar /state (segundos)
 		float stateSendTimer;                 // Timer para /state
@@ -151,6 +199,23 @@ class ofApp : public ofBaseApp{
 		bool chladniState;         // Estado actual: ON/OFF
 		float k_home_previous;      // Valor guardado de k_home antes de activar Chladni
 		float plateShakerStrength; // Intensidad del Plate Shaker, constante ajustable
+
+		// Campo plate precomputado (grid ∇E + U para muestreo bilinear; plan 4.1)
+		std::vector<ofVec2f> plateGradE;
+		std::vector<float> plateU;
+		int gridPlateW;
+		int gridPlateH;
+		bool plateDirty;
+		float lastPlateRebuildTime;
+		int lastBuiltPlateMode;
+		float lastBuiltPlateWidth;
+		float lastBuiltPlateHeight;
+		void rebuildPlateField(int mode, float plateSizeX, float plateSizeY);
+		
+		// VBO para render de partículas (plan 4.2): preasignado, updateVertexData, point size por shader
+		static const int kMaxParticles = 8000;
+		ofVboMesh particlesMesh;
+		ofShader pointsShader;
 		
 		// Funciones auxiliares
 		void initializeParticles(int n);
@@ -162,6 +227,7 @@ class ofApp : public ofBaseApp{
 		void getModeCoefficients(int mode, int& m, int& n, float& a, float& b);  // Mezcla de modos degenerados
 		
 		// Funciones de colisiones y eventos
+		bool isExternalForceActive() const;  // Gesture o plate activos -> exime solo rest gate
 		void checkCollisions();
 		void checkParticleCollisions();  // Detectar colisiones entre partículas
 		float calculateHitEnergy(Particle& p, int surface);
@@ -169,8 +235,8 @@ class ofApp : public ofBaseApp{
 		void generateHitEvent(Particle& p, int surface);
 		void generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisionPoint);
 		void updateRateLimiter(float dt);
-		bool canEmitHit();
-		void consumeToken();
+		bool canEmitHit(const HitEvent& event);
+		void consumeToken(const HitEvent& event);
 		void processPendingHits();
 		
 		// Funciones de OSC

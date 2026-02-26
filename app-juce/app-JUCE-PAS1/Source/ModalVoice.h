@@ -34,10 +34,16 @@ public:
     void prepare(double sampleRate);
 
     /** Configura los parámetros de la voz */
-    void setParameters(float baseFreq, float amplitude, float damping, 
+    void setParameters(float baseFreq, float amplitude, float damping,
                        float brightness, float metalness,
                        ExcitationWaveform waveform = ExcitationWaveform::Noise,
                        float subOscMix = 0.0f);
+
+    /** Actualiza solo parámetros globales (metalness, brightness, damping). No modifica waveform, subOscMix, baseFreq ni amplitude. RT-safe. */
+    void setGlobalParametersOnly(float metalness, float brightness, float damping);
+
+    /** Configura parámetros ADSR (Attack, Decay, Sustain, Release) */
+    void setADSR(float attackMs, float decayMs, float sustainLevel, float releaseMs);
 
     /** Trigger la voz (inicia la excitación) */
     void trigger();
@@ -64,14 +70,23 @@ private:
     //==============================================================================
     static constexpr int NUM_MODES = 6; // Número de modos resonantes (aumentado para timbre metálico más rico)
     
-    // Factores inarmónicos para cada modo (valores típicos para timbre metálico)
+    // Factores inarmónicos para cada modo (valores optimizados para timbre metálico tipo "coin cascade")
+    // Basados en ratios típicos de barras/placas metálicas delgadas (no formantes tipo madera)
     static constexpr float INHARMONIC_FACTORS[NUM_MODES] = {
         1.0f,      // Modo 0: fundamental
-        2.76f,     // Modo 1: segundo modo inarmónico
+        2.76f,     // Modo 1: segundo modo inarmónico (típico de barra delgada)
         5.40f,     // Modo 2: tercer modo inarmónico
         8.93f,     // Modo 3: cuarto modo inarmónico
         13.34f,    // Modo 4: quinto modo inarmónico
         18.65f     // Modo 5: sexto modo inarmónico
+    };
+    
+    // Presets modales para diferentes caracteres metálicos (seleccionables por parámetro)
+    enum class ModalPreset
+    {
+        ThinBar,      // Barra delgada (más brillante, modos altos más presentes)
+        ThickPlate,   // Placa gruesa (más oscuro, fundamental más fuerte)
+        Coin          // Moneda (balance medio, timbre "cascade" característico)
     };
 
     // Ganancias relativas por modo (para brightness)
@@ -261,9 +276,37 @@ private:
     bool isExciting = false;
     ExcitationWaveform currentWaveform = ExcitationWaveform::Noise;
     
-    // Envolvente de decaimiento global
+    // Envolvente ADSR completa
+    enum class EnvelopeStage
+    {
+        Idle,
+        Attack,
+        Decay,
+        Sustain,
+        Release
+    };
+    
+    EnvelopeStage envelopeStage = EnvelopeStage::Idle;
     float envelope = 0.0f;
-    float envelopeDecay = 0.0f;
+    float envelopeIncrement = 0.0f;
+    
+    // Parámetros ADSR (en ms)
+    float attackMs = 1.0f;      // Ataque muy breve para timbre percusivo
+    float decayMs = 50.0f;      // Decay moderado
+    float sustainLevel = 0.3f;  // Nivel de sustain
+    float releaseMs = 100.0f;   // Release moderado
+    
+    // Valores calculados para ADSR (en samples)
+    float attackSamples = 0.0f;
+    float decaySamples = 0.0f;
+    float releaseSamples = 0.0f;
+    float attackIncrement = 0.0f;
+    float decayIncrement = 0.0f;
+    float releaseIncrement = 0.0f;
+    
+    // Envolvente dependiente de energía (para golpes fuertes vs micro-hits)
+    float energyScaledAttackMs = 1.0f;
+    float energyScaledDecayMs = 50.0f;
     
     // Amplitud residual para voice stealing
     float residualAmplitude = 0.0f;
@@ -286,4 +329,8 @@ private:
     float calculateModeFrequency(int modeIndex) const;
     float calculateModeGain(int modeIndex) const;
     float calculateModeQ(int modeIndex) const;
+    
+    // Métodos ADSR
+    void updateADSRSamples();
+    void updateEnvelope();
 };

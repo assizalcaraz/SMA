@@ -151,6 +151,74 @@ Donde:
 
 ---
 
+### `/plate` — Control de Plate Synth
+
+**Dirección:** `/plate`
+
+**Descripción:** Mensaje para controlar el sintetizador de placa (Plate Synth) que genera sonidos de vibración de placa metálica mediante resonadores modales excitados por ruido. Este mensaje permite controlar la frecuencia fundamental, amplitud de excitación y modo de vibración de la placa.
+
+**Contrato:**
+
+**Parámetros:**
+
+| Orden | Tipo    | Nombre | Rango      | Descripción                          |
+|-------|---------|--------|------------|--------------------------------------|
+| 1     | `float` | `freq` | 20.0 - 2000.0 Hz | Frecuencia fundamental de la placa |
+| 2     | `float` | `amp`  | 0.0 - 1.0  | Amplitud de excitación (0.0 = silencio, 1.0 = máximo) |
+| 3     | `int32` | `mode` | 0 - 7      | Modo de vibración de placa (diferentes configuraciones tímbricas) |
+
+**Frecuencia de updates:**
+- Continuo: 10-60 Hz (recomendado 20-30 Hz para estabilidad)
+- Rate limiting: máximo 60 mensajes/segundo en oF (recomendado 20-30 Hz)
+
+**Comportamiento fail-safe:**
+- Si no se recibe `/plate` en 2 segundos → fade out automático a silencio
+- Timeout implementado en JUCE (no en oF)
+- El sistema degrada gracefully si oF se desconecta
+
+**Modos de placa (`mode`):**
+
+Cada modo define diferentes configuraciones de factores inarmónicos y ganancias relativas de los modos resonantes:
+
+| Modo | Descripción                    | Características                          |
+|------|--------------------------------|------------------------------------------|
+| 0    | Placa delgada                  | Timbre más brillante, modos más altos    |
+| 1-6  | Configuraciones intermedias    | Variaciones tímbricas progresivas        |
+| 7    | Placa gruesa                   | Timbre más oscuro, modos más bajos       |
+
+**Ejemplo de mensaje:**
+
+```
+/plate 440.0 0.75 3
+```
+
+**Interpretación:**
+- Frecuencia: 440.0 Hz (nota A4)
+- Amplitud: 0.75 (75% de excitación)
+- Modo: 3 (configuración intermedia)
+
+**Frecuencia esperada:**
+- Máximo: 60 mensajes/segundo (con rate limiting)
+- Típico: 20-30 mensajes/segundo durante control continuo
+- Mínimo: 0 mensajes/segundo (silencio, fade-out automático)
+
+**Validación:**
+- App B debe validar que todos los parámetros estén en rango
+- Valores fuera de rango deben ser clampeados:
+  - `freq`: clamp a 20.0-2000.0 Hz
+  - `amp`: clamp a 0.0-1.0
+  - `mode`: clamp a 0-7
+- Mensajes malformados deben ser descartados sin crashear
+
+**Uso en App B:**
+- `freq` → frecuencia fundamental de los resonadores modales
+- `amp` → nivel de excitación (ruido blanco filtrado)
+- `mode` → selección de configuración tímbrica (factores inarmónicos y ganancias)
+
+**Nota:** Este mensaje es independiente del sistema de partículas (`/hit`). El Plate Synth se mezcla con el audio de partículas antes del limiter, permitiendo que el limiter proteja la señal completa.
+
+---
+
 ### `/ctrl` — Control remoto
 
 **Dirección:** `/ctrl`

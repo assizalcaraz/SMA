@@ -1,4 +1,8 @@
 #include "SynthesisEngine.h"
+#include <atomic>
+
+// renderNextBlock(), processEventQueue(), and everything they call run on the audio thread
+// and must be RT-safe: no locks, allocations, or logging.
 
 //==============================================================================
 SynthesisEngine::SynthesisEngine()
@@ -26,7 +30,10 @@ void SynthesisEngine::prepare(double sampleRate)
     
     // Inicializar valores previos de parámetros globales
     prevMetalness = metalness.load();
+    prevBrightness = brightness.load();
+    prevDamping = damping.load();
     parameterUpdateCounter = 0;
+    smoothedDensity = 0.0f;
     
     // DIAGNOSTIC: For stability testing, use:
     // - Buffer size: 1024 samples
@@ -38,10 +45,7 @@ void SynthesisEngine::prepare(double sampleRate)
 //==============================================================================
 void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)
 {
-    // RT-SAFE: Procesar eventos de la cola lock-free primero (máximo MAX_HITS_PER_BLOCK)
     processEventQueue();
-    
-    // RT-SAFE: Actualizar parámetros globales en voces activas periódicamente
     // Actualizar cada N bloques para eficiencia (evitar actualizar en cada bloque)
     parameterUpdateCounter++;
     if (parameterUpdateCounter >= PARAMETER_UPDATE_INTERVAL)
@@ -50,23 +54,52 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         
         // Leer parámetros globales (atomic, thread-safe)
         float currentMetalness = metalness.load();
+        float currentBrightness = brightness.load();
+        float currentDamping = damping.load();
         
-        // Actualizar solo si cambió (optimización)
-        if (std::abs(currentMetalness - prevMetalness) > 0.001f)
+        // Actualizar solo si cambió algún parámetro (optimización)
+        bool needsUpdate = (std::abs(currentMetalness - prevMetalness) > 0.001f) ||
+                          (std::abs(currentBrightness - prevBrightness) > 0.001f) ||
+                          (std::abs(currentDamping - prevDamping) > 0.001f);
+        
+        if (needsUpdate)
         {
-            // Usar valores fijos para brightness y damping (0.5 = medio)
-            voiceManager.updateGlobalParameters(currentMetalness, 0.5f, 0.5f);
+            // Actualizar parámetros globales en voces activas
+            voiceManager.updateGlobalParameters(currentMetalness, currentBrightness, currentDamping);
             
-            // Actualizar valor previo
+            // Actualizar valores previos
             prevMetalness = currentMetalness;
+            prevBrightness = currentBrightness;
+            prevDamping = currentDamping;
         }
+        // M4: Sincronizar flag de carácter al VoiceManager
+        voiceManager.setEnableM4Character(enableM4Character.load());
     }
     
     // Renderizar voces
     voiceManager.renderNextBlock(buffer, startSample, numSamples);
+
+    // M4: Compensación de densidad (gain trim suave para evitar clipping en escenas densas)
+    if (enableDensityCompensation.load())
+    {
+        int activeCount = voiceManager.getActiveVoiceCount();
+        int maxV = std::max(1, maxVoices.load());
+        float currentDensity = (float)activeCount / (float)maxV;
+        float tauSamples = (float)(currentSampleRate * M4_DENSITY_TAU_MS * 0.001);
+        float alpha = (tauSamples > 0.0f && numSamples > 0)
+            ? std::exp(-(float)numSamples / tauSamples) : 0.0f;
+        smoothedDensity = alpha * smoothedDensity + (1.0f - alpha) * currentDensity;
+        float gainTrim = 1.0f / std::sqrt(1.0f + M4_KDENSITY * smoothedDensity);
+        gainTrim = juce::jlimit(0.25f, 1.0f, gainTrim);
+        for (int ch = 0; ch < buffer.getNumChannels(); ch++)
+        {
+            float* data = buffer.getWritePointer(ch, startSample);
+            for (int i = 0; i < numSamples; i++)
+                data[i] *= gainTrim;
+        }
+    }
     
     // Renderizar plate y sumar al buffer (pre-limiter)
-    // RT-SAFE: Usar buffer pre-allocado en prepare()
     int numChannels = buffer.getNumChannels();
     
     // Limpiar y renderizar plate en buffer temporal
@@ -92,43 +125,34 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
         }
     }
     
-    // Aplicar procesamiento master (solo limiter)
+    // Aplicar procesamiento master (solo clipper); M3: contar bloques con clipping (una vez por bloque)
     bool currentLimiterEnabled = limiterEnabled.load();
-    
+    bool blockHadClip = false;
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
         float* channelData = buffer.getWritePointer(channel, startSample);
-        
         for (int sample = 0; sample < numSamples; sample++)
         {
             float sampleValue = channelData[sample];
-            
-            // Aplicar limiter si está habilitado
             if (currentLimiterEnabled)
             {
-                sampleValue = applyLimiter(sampleValue);
+                if (sampleValue > clipperThreshold || sampleValue < -clipperThreshold)
+                    blockHadClip = true;
+                sampleValue = applyClipper(sampleValue);
             }
-            
             channelData[sample] = sampleValue;
-            
-            // Actualizar nivel de salida (usar primer canal)
             if (channel == 0)
-            {
                 updateOutputLevel(sampleValue);
-            }
         }
     }
-    
-    // RT-SAFE: Removido setMaxVoices() y prepare() desde audio thread
-    // Estos deben llamarse desde UI thread usando setMaxVoices() que actualiza el atomic
-    // VoiceManager debe pre-allocar todas las voces y solo activar/desactivar según maxVoices
+    if (blockHadClip)
+        blocksClippedCount.fetch_add(1, std::memory_order_relaxed);
 }
 
 //==============================================================================
 void SynthesisEngine::setMaxVoices(int newMaxVoices)
 {
-    // RT-SAFE: Actualizar atomic y también el VoiceManager
-    int limitedVoices = juce::jlimit(4, 12, newMaxVoices);
+    int limitedVoices = juce::jlimit(4, 24, newMaxVoices);
     maxVoices.store(limitedVoices);
     
     // Actualizar VoiceManager (esto es seguro porque se llama desde UI thread)
@@ -138,6 +162,16 @@ void SynthesisEngine::setMaxVoices(int newMaxVoices)
 void SynthesisEngine::setMetalness(float newMetalness)
 {
     metalness.store(juce::jlimit(0.0f, 1.0f, newMetalness));
+}
+
+void SynthesisEngine::setBrightness(float newBrightness)
+{
+    brightness.store(juce::jlimit(0.0f, 1.0f, newBrightness));
+}
+
+void SynthesisEngine::setDamping(float newDamping)
+{
+    damping.store(juce::jlimit(0.0f, 1.0f, newDamping));
 }
 
 void SynthesisEngine::setWaveform(ModalVoice::ExcitationWaveform newWaveform)
@@ -176,6 +210,16 @@ float SynthesisEngine::getMetalness() const
     return metalness.load();
 }
 
+float SynthesisEngine::getBrightness() const
+{
+    return brightness.load();
+}
+
+float SynthesisEngine::getDamping() const
+{
+    return damping.load();
+}
+
 ModalVoice::ExcitationWaveform SynthesisEngine::getWaveform() const
 {
     return static_cast<ModalVoice::ExcitationWaveform>(waveform.load());
@@ -204,13 +248,13 @@ float SynthesisEngine::getPlateVolume() const
 //==============================================================================
 void SynthesisEngine::triggerTestVoice()
 {
-    // RT-SAFE: Escribir evento a cola lock-free en lugar de llamar directamente
-    // El audio thread procesará el evento en el próximo renderNextBlock()
+    // El audio thread procesará el evento en el próximo renderNextBlock().
+    // Tone/Decay desde sliders (atómicos) para que Test Trigger suene según UI; ruta cruda, sonido base (sin fusión ni border).
     HitEvent event;
     event.baseFreq = testFreq.load();
     event.amplitude = testAmplitude.load();
-    event.damping = 0.5f; // Valor fijo
-    event.brightness = 0.5f; // Valor fijo
+    event.damping = damping.load();
+    event.brightness = brightness.load();
     event.metalness = metalness.load();
     event.waveform = static_cast<ModalVoice::ExcitationWaveform>(waveform.load());
     event.subOscMix = subOscMix.load();
@@ -227,12 +271,19 @@ void SynthesisEngine::triggerTestVoice()
 }
 
 //==============================================================================
+void SynthesisEngine::incrementHitsReceived()
+{
+    hitsReceived.fetch_add(1, std::memory_order_relaxed);
+}
+
+//==============================================================================
 void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude, 
                                          float damping, float brightness, float metalness,
                                          ModalVoice::ExcitationWaveform waveform,
                                          float subOscMix)
 {
-    // RT-SAFE: Escribir evento a cola lock-free (mismo path que triggerTestVoice)
+    hitsReceived.fetch_add(1, std::memory_order_relaxed);
+    
     // El audio thread procesará el evento en el próximo renderNextBlock()
     HitEvent event;
     event.baseFreq = baseFreq;
@@ -251,7 +302,11 @@ void SynthesisEngine::triggerVoiceFromOSC(float baseFreq, float amplitude,
         eventQueue[start1] = event;
         eventFifo.finishedWrite(size1);
     }
-    // Si la cola está llena, el evento se descarta silenciosamente (protección contra overflow)
+    else
+    {
+        // Cola llena - evento descartado
+        hitsDiscarded.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 //==============================================================================
@@ -272,68 +327,165 @@ void SynthesisEngine::reset()
     voiceManager.resetAll();
     plateSynth.reset();
     outputLevel = 0.0f;
+    smoothedDensity = 0.0f;
+    hitsReceived.store(0, std::memory_order_relaxed);
+    hitsTriggered.store(0, std::memory_order_relaxed);
+    hitsDiscarded.store(0, std::memory_order_relaxed);
+    fusedHitsEnqueued.store(0, std::memory_order_relaxed);
+    fusedHitsDiscardedQueue.store(0, std::memory_order_relaxed);
+    blocksClippedCount.store(0, std::memory_order_relaxed);
+    fusedFifo.reset();
+}
+
+//==============================================================================
+void SynthesisEngine::setEnableM4Character(bool enable)
+{
+    enableM4Character.store(enable);
+}
+
+bool SynthesisEngine::getEnableM4Character() const
+{
+    return enableM4Character.load();
+}
+
+void SynthesisEngine::setEnableDensityCompensation(bool enable)
+{
+    enableDensityCompensation.store(enable);
+}
+
+bool SynthesisEngine::getEnableDensityCompensation() const
+{
+    return enableDensityCompensation.load();
+}
+
+//==============================================================================
+int SynthesisEngine::getHitsReceived() const
+{
+    return hitsReceived.load(std::memory_order_relaxed);
+}
+
+int SynthesisEngine::getHitsTriggered() const
+{
+    return hitsTriggered.load(std::memory_order_relaxed);
+}
+
+int SynthesisEngine::getHitsDiscarded() const
+{
+    return hitsDiscarded.load(std::memory_order_relaxed);
+}
+
+float SynthesisEngine::getHitCoverageRatio() const
+{
+    int received = hitsReceived.load(std::memory_order_relaxed);
+    if (received == 0)
+        return 1.0f; // Sin hits recibidos = ratio perfecto
+    
+    int triggered = hitsTriggered.load(std::memory_order_relaxed);
+    return (float)triggered / (float)received;
+}
+
+//==============================================================================
+bool SynthesisEngine::enqueueFusedSnapshot(const FusedHitSnapshot& snapshot)
+{
+    int start1, size1, start2, size2;
+    fusedFifo.prepareToWrite(1, start1, size1, start2, size2);
+    if (size1 > 0)
+    {
+        fusedQueue[start1] = snapshot;
+        fusedFifo.finishedWrite(size1);
+        fusedHitsEnqueued.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+    fusedHitsDiscardedQueue.fetch_add(1, std::memory_order_relaxed);
+    return false;
+}
+
+int SynthesisEngine::getFusedHitsEnqueued() const
+{
+    return fusedHitsEnqueued.load(std::memory_order_relaxed);
+}
+
+int SynthesisEngine::getFusedHitsDiscardedQueue() const
+{
+    return fusedHitsDiscardedQueue.load(std::memory_order_relaxed);
+}
+
+int SynthesisEngine::getBlocksClippedCount() const
+{
+    return blocksClippedCount.load(std::memory_order_relaxed);
 }
 
 //==============================================================================
 void SynthesisEngine::triggerPlateFromOSC(float freq, float amp, int mode)
 {
-    // RT-SAFE: Llamar a PlateSynth que usa atomic internamente
     plateSynth.triggerPlate(freq, amp, mode);
 }
 
 //==============================================================================
-float SynthesisEngine::applyLimiter(float sample)
+float SynthesisEngine::applyClipper(float sample)
 {
-    // RT-SAFE: Limiter simplificado (evitar std::abs() costoso)
     float absSample = sample >= 0.0f ? sample : -sample;
-    
-    if (absSample > limiterThreshold)
-    {
-        // Simplificar cálculo de limiter
-        float ratio = limiterThreshold / absSample;
-        return sample * ratio;
-    }
-    
+    if (absSample > clipperThreshold)
+        return sample * (clipperThreshold / absSample);
     return sample;
 }
 
 //==============================================================================
 void SynthesisEngine::processEventQueue()
 {
-    // RT-SAFE: Drenar eventos de la cola lock-free (máximo MAX_HITS_PER_BLOCK por bloque)
-    // Limitar aún más bajo carga para evitar sobrecarga del audio thread
+    // 1) M2 fused: constant-power stereo pan (gL/gR from snapshot) applied in VoiceManager mix stage
+    int fusedAvailable = fusedFifo.getNumReady();
+    int fusedToRead = juce::jmin(MAX_HITS_PER_BLOCK, fusedAvailable);
+    if (fusedToRead > 0)
+    {
+        int start1, size1, start2, size2;
+        fusedFifo.prepareToRead(fusedToRead, start1, size1, start2, size2);
+        for (int i = 0; i < size1; i++)
+        {
+            const FusedHitSnapshot& s = fusedQueue[start1 + i];
+            auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
+                                     wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
+            hitsTriggered.fetch_add(1, std::memory_order_relaxed);
+        }
+        for (int i = 0; i < size2; i++)
+        {
+            const FusedHitSnapshot& s = fusedQueue[start2 + i];
+            auto wf = static_cast<ModalVoice::ExcitationWaveform>(juce::jlimit(0, 6, s.waveformAsInt));
+            voiceManager.triggerVoice(s.baseFreq, s.amplitude, s.damping, s.brightness, s.metalness,
+                                     wf, s.subOscMix, s.gainL, s.gainR, s.quadrant);
+            hitsTriggered.fetch_add(1, std::memory_order_relaxed);
+        }
+        fusedFifo.finishedRead(size1 + size2);
+    }
+    
+    // 2) Drenar cola de hits crudos (mono: gainL/gainR = 1)
     int available = eventFifo.getNumReady();
     if (available == 0)
         return;
     
-    // Reducir procesamiento si hay muchos eventos pendientes (protección contra sobrecarga)
     int numToRead = juce::jmin(MAX_HITS_PER_BLOCK, available);
-    
-    // Si hay demasiados eventos acumulados, procesar menos para evitar sobrecarga
     if (available > MAX_HITS_PER_BLOCK * 2)
-    {
-        numToRead = MAX_HITS_PER_BLOCK / 2; // Procesar la mitad para dar tiempo al audio thread
-    }
+        numToRead = MAX_HITS_PER_BLOCK / 2;
     
     int start1, size1, start2, size2;
     eventFifo.prepareToRead(numToRead, start1, size1, start2, size2);
     
-    // Procesar primera sección
     for (int i = 0; i < size1; i++)
     {
         const HitEvent& event = eventQueue[start1 + i];
-        voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
+        voiceManager.triggerVoice(event.baseFreq, event.amplitude,
                                    event.damping, event.brightness, event.metalness,
-                                   event.waveform, event.subOscMix);
+                                   event.waveform, event.subOscMix, 1.0f, 1.0f);
+        hitsTriggered.fetch_add(1, std::memory_order_relaxed);
     }
-    
-    // Procesar segunda sección (si hay wraparound)
     for (int i = 0; i < size2; i++)
     {
         const HitEvent& event = eventQueue[start2 + i];
-        voiceManager.triggerVoice(event.baseFreq, event.amplitude, 
+        voiceManager.triggerVoice(event.baseFreq, event.amplitude,
                                    event.damping, event.brightness, event.metalness,
-                                   event.waveform, event.subOscMix);
+                                   event.waveform, event.subOscMix, 1.0f, 1.0f);
+        hitsTriggered.fetch_add(1, std::memory_order_relaxed);
     }
     
     eventFifo.finishedRead(size1 + size2);

@@ -2,18 +2,16 @@
 
 #include <JuceHeader.h>
 #include "SynthesisEngine.h"
+#include "HitAggregator.h"
 #include <random>
 
-// Include OSC module directly (needed until project is regenerated from Projucer)
-// After regenerating, this can be removed as it will be in JuceHeader.h
-// Try multiple include paths to ensure it works
-#if ! JUCE_MODULE_AVAILABLE_juce_osc
-    #if __has_include(<juce_osc/juce_osc.h>)
-        #include <juce_osc/juce_osc.h>
-    #else
-        #include "../../../../../../../../../Applications/JUCE/modules/juce_osc/juce_osc.h"
-    #endif
-#endif
+class MainComponent;
+
+struct AggregatorTimer : juce::Timer
+{
+    MainComponent* owner = nullptr;
+    void timerCallback() override;
+};
 
 //==============================================================================
 /*
@@ -47,6 +45,9 @@ public:
     void comboBoxChanged (juce::ComboBox* comboBox) override;
     void timerCallback() override;
 
+    /** Llamado por AggregatorTimer cada 20 ms para cerrar ventana y encolar FusedHitSnapshot. */
+    void flushAggregatorWindow();
+
 private:
     //==============================================================================
     SynthesisEngine synthesisEngine;
@@ -58,6 +59,12 @@ private:
     juce::Slider metalnessSlider;
     juce::Label metalnessLabel;
     
+    juce::Slider brightnessSlider;
+    juce::Label brightnessLabel;
+    
+    juce::Slider dampingSlider;
+    juce::Label dampingLabel;
+    
     juce::ComboBox waveformComboBox;
     juce::Label waveformLabel;
     
@@ -67,16 +74,27 @@ private:
     juce::Slider pitchRangeSlider;
     juce::Label pitchRangeLabel;
     
-    juce::Slider plateVolumeSlider;
-    juce::Label plateVolumeLabel;
-    
     juce::ToggleButton limiterToggle;
     juce::Label limiterLabel;
-    
+    juce::ToggleButton densityCompToggle;   // M4: compensación por densidad
+    juce::ToggleButton centerBiasToggle;    // M4: center bias espacial
+    juce::ToggleButton demoModeToggle;       // M5: demo mode (hide advanced UI)
+    juce::ComboBox presetComboBox;          // M5: preset selector
+    juce::Label presetLabel;
+    juce::TextButton resetPresetButton;     // M5: reset to current / default preset
     juce::TextButton testTriggerButton;
     
     juce::Label outputLevelLabel;
     juce::Label activeVoicesLabel;
+    juce::Label hitsCoverageLabel;
+    juce::Label hitsStatsLabel;
+    juce::Label m2FusionStatsLabel;
+    juce::Label clipperHitCountLabel; // M3: "Clip: X blocks/s"
+    int lastBlocksClippedCount = 0;
+    juce::int64 lastClipUpdateTime = 0;
+    
+    /** Fused snapshots produced by M2 aggregator (closeWindow) since start. */
+    std::atomic<int> fusedProduced{0};
     
     // OSC Receiver
     juce::OSCReceiver oscReceiver;
@@ -87,6 +105,25 @@ private:
     juce::int64 lastOscActivityTimestamp = 0;
     std::atomic<int> oscMessageCountAccumulator{0};
     juce::int64 lastOscCountUpdateTime = 0;
+    
+    /** Si false (default), PAS ignora /plate y PlateSynth no recibe triggers. */
+    bool enablePlateSynth = false;
+    
+    /** Si true (default), M2 fusion: los /hit se agregan por cuadrante/ventana 20 ms y se encolan como FusedHitSnapshot. */
+    bool enableFusionAggregation = true;
+
+    /** M4: Identidad Click-Resonant y controles mínimos. Default ON. */
+    bool enableM4Character = true;
+    /** M4: Compensación de ganancia por densidad. Default ON. */
+    bool enableDensityCompensation = true;
+    /** M4: Center bias <= 1.5 dB en HitAggregator. Default ON. */
+    bool enableCenterBias = true;
+
+    /** M5: Demo mode — hide advanced counters for presentation/evaluation. */
+    bool demoMode_{false};
+    
+    HitAggregator hitAggregator;
+    AggregatorTimer aggregatorTimer;
     
     // Global state from /state messages (non-RT thread safe)
     std::atomic<float> globalPresence{1.0f};
@@ -106,6 +143,9 @@ private:
     void mapOSCHitToEvent(const juce::OSCMessage& message);
     void updateOSCState(const juce::OSCMessage& message);
     void mapOSCPlateToEvent(const juce::OSCMessage& message);
+
+    /** M5: Apply preset by index (0-based). Updates sliders, toggles, engine and aggregator. */
+    void applyPreset(int presetIndex);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

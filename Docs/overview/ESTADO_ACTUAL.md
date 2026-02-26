@@ -1,8 +1,25 @@
 # Estado Actual del Proyecto
 
-**Última actualización**: 2026-02-XX (v0.4)
+**Última actualización**: 2026-02-XX (v0.3)
 
 Este documento describe el estado actual de implementación del Sistema Modular Audiovisual, qué componentes están completados, en desarrollo o pendientes.
+
+**Rama de entrega ISTR/PAS1:** Esta rama (`entrega-istr-pas1`) es la base para empaquetar y entregar los módulos **Particles (ISTR)** y **app-juce (PAS1)** sin referencias a CALIB. OSC: un solo destino en puerto 9000; no hay mensajes `/test/*` ni grabación.
+
+### Contenido de la rama de entrega
+
+Sobre la base v0.3 se aplicaron únicamente parches que no dependen de CALIB:
+
+| Parche | Descripción |
+|--------|-------------|
+| 7031b47 | Rate limits (800 hits/s, burst 1000, 50/frame), control Pitch Range en JUCE, capacidad de cola, balance del Plate (-20 dB) |
+| a02e92e + strip | Mejoras de timbre (ADSR, excitación, sliders brightness/damping); eliminado modo test, fan-out OSC y grabación |
+| 83a7365 (parcial) | `getNormalized()` en Particles; corrección de `jmap` en ModalVoice (attack/decay) |
+| 85917e8 (PlateSynth) | RT-safety: contador por samples en lugar de `currentTimeMillis()` en el audio thread |
+
+**No incluido en esta rama:** receptores `/test/*`, grabación WAV, beeps, fan-out a puertos 9100/9002, `maad-2-calib`. La app real de openFrameworks es **Particles**; el directorio `app-of/` contiene solo un README que redirige a Particles.
+
+**Uso:** `git checkout entrega-istr-pas1` para trabajar y empaquetar los módulos ISTR (Particles) y PAS1 (app-juce). Compilar Particles y app-juce desde sus respectivos proyectos; enviar OSC desde Particles a app-juce en el puerto 9000.
 
 ---
 
@@ -58,8 +75,6 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Clamp de `dt` para consistencia FPS
   - Clamp relativo de fuerza shaker (`F_SHAKER_MAX = 0.5 * F_MAX`)
   - Preservación completa de comportamiento v0.2 cuando Chladni está OFF
-
-**Referencia bibliográfica**: La implementación del sistema de placa de Chladni se basa en los principios físicos descritos en: [Placa de Chladni — Universidad Complutense de Madrid](https://www.ucm.es/data/cont/docs/76-2013-11-08-10_01_Chladnis_plate.pdf)
 
 ---
 
@@ -119,7 +134,6 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Sistema de coordenadas fijo (centro inmutable en centro de ventana)
   - Campo estacionario U(x̂,ŷ) = sin(mπx̂)*sin(nπŷ) según teoría de Chladni
   - Partículas se acumulan en nodos (líneas nodales estacionarias)
-  - **Referencia**: Basado en [Placa de Chladni — UCM](https://www.ucm.es/data/cont/docs/76-2013-11-08-10_01_Chladnis_plate.pdf)
 - ✅ **Mejoras de simetría y estabilidad** (2026-02-10):
   - Mezcla de modos degenerados para restaurar simetría en modos altos
   - Fuerza basada en energía (E = U²) físicamente más correcta
@@ -244,11 +258,7 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - Fail-safe: fade-out automático después de 2 segundos sin updates
   - Thread-safe: parámetros usando atomic, buffer pre-allocado
 
-**Documentación**: Completa en `Docs/JUCE/`
-- [`Docs/JUCE/README.md`](../JUCE/README.md) - Índice del módulo
-- [`Docs/JUCE/readme.md`](../JUCE/readme.md) - Descripción general y arquitectura
-- [`Docs/JUCE/manual.md`](../JUCE/manual.md) - Manual de usuario
-- [`Docs/JUCE/spec.md`](../JUCE/spec.md) - Especificación técnica
+**Documentación**: Ver `PROMPT_FASE6.md` para detalles de implementación
 
 ---
 
@@ -330,10 +340,9 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
   - ✅ Fase 6: Sintetizador básico (JUCE Standalone)
   - ✅ Fase 7: Receptor OSC y mapeo (partículas)
   - ✅ Fase 8: Sistema Plate paralelo (Plate Controller + PlateSynth)
-- **Módulos funcionales**: 3 de 3 (100%)
+- **Módulos funcionales**: 2 de 2 (100%)
   - ✅ Particles (App A) - Completo (incluye Plate Controller)
   - ✅ Sintetizador JUCE (App B) - Completo (partículas + plate)
-  - ✅ MAAD-2-CALIB (App C) - Scaffolding completo (v0.4)
 - **Documentación**: Completa para módulos implementados
 
 ---
@@ -343,73 +352,7 @@ El proyecto está en desarrollo activo, con el módulo Particles (App A) parcial
 - [Plan de implementación](../specs/PLAN_IMPLEMENTACION.md) — Detalles de fases y tareas
 - [Especificación técnica](../specs/spec.md) — Arquitectura y diseño
 - [Documentación de Particles](../Particles/README.md) — Detalles del módulo
-- [Documentación de CALIB (v0.4)](../CALIB/README.md) — Módulo de calibración y validación
 
 ---
 
----
-
-## v0.4: MAAD-2-CALIB — Módulo de Calibración y Validación
-
-**Estado**: ✅ **Scaffolding completado** (2026-02-XX)
-
-### Descripción
-
-MAAD-2-CALIB es un módulo de calibración y validación diseñado como trabajo final integrador de **Matemática Aplicada al Arte Digital II (MAAD-2)**. Proporciona tres responsabilidades principales:
-
-1. **CONTROL:** Orquestación de transporte OSC para sesiones de calibración reproducibles
-2. **REGISTRATION:** Captura y registro de datos (NDJSON + WAV + metadata)
-3. **ANALYSIS:** Análisis offline basado en Python/Jupyter con técnicas de procesamiento digital de señales
-
-### Componentes Implementados
-
-#### Documentación
-- ✅ **README.md** — Descripción general del módulo con diagrama de arquitectura
-- ✅ **CALIB_SPEC.md** — Especificación técnica completa:
-  - Contrato OSC de control (`/test/start`, `/test/stop`, `/test/seek`, `/test/rate`, `/test/seed`, `/test/beep`)
-  - Estructura de artefactos de salida (`runs/YYYYMMDD_HHMMSS/`)
-  - Non-goals claramente definidos
-- ✅ **ACADEMIC_ALIGNMENT.md** — Alineación académica completa:
-  - Temas del curso MAAD-2 cubiertos (DFT, STFT, Transformada Z, Sistemas LTI, etc.)
-  - Herramientas matemáticas involucradas
-  - Técnicas de procesamiento de señales
-  - Metodología de validación y reproducibilidad
-  - Criterios de evaluación del TFI
-
-#### Código (Placeholders)
-- ✅ **main.cpp** — Estructura básica con comentarios y TODOs
-- ✅ **analysis_template.ipynb** — Template de Jupyter notebook con:
-  - Secciones alineadas con contenidos MAAD-2
-  - Imports básicos (numpy, scipy, librosa, matplotlib)
-  - Estructura para análisis completo (DFT, STFT, sistemas LTI, etc.)
-
-#### Estructura
-- ✅ Directorios creados: `specs/`, `src/`, `runs/`, `notebooks/`
-
-### Integración con Sistema Existente
-
-- ✅ Compatible con puerto OSC existente (9000)
-- ✅ Escucha mensajes OSC existentes (`/hit`, `/state`, `/plate`)
-- ✅ No modifica arquitectura core del sistema
-- ✅ Agrega comandos de control (`/test/*`) para orquestación
-
-### Próximos Pasos
-
-- ⏳ Implementación de lógica de CONTROL (orquestación OSC)
-- ⏳ Implementación de lógica de REGISTRATION (captura NDJSON + WAV)
-- ⏳ Implementación completa de análisis en notebook (DFT, STFT, etc.)
-- ⏳ Testing de sesiones de calibración
-- ⏳ Validación de reproducibilidad experimental
-
-### Referencias
-
-**Documentación:**
-- [Índice del Módulo CALIB](../CALIB/README.md)
-- [Descripción General y Arquitectura](../CALIB/readme.md)
-- [Manual de Usuario](../CALIB/manual.md)
-- [Especificación Técnica](../CALIB/spec.md)
-- [Alineación académica](../../maad-2-calib/specs/ACADEMIC_ALIGNMENT.md) — Contenidos MAAD-2 (ubicado en maad-2-calib/specs/)
-
----
-
-**Última actualización**: 2026-02-XX (v0.4: Scaffolding de MAAD-2-CALIB completado)
+**Última actualización**: 2026-02-24 (Rama entrega ISTR/PAS1 documentada; parches aplicados sin CALIB)

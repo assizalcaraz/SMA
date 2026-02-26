@@ -17,6 +17,7 @@ void ModalVoice::prepare(double sampleRate)
     currentSampleRate = sampleRate;
     reset();
     updateFilterCoefficients();
+    updateADSRSamples();
     
     // Preparar filtro formant
     if (formantEnabled)
@@ -56,13 +57,50 @@ void ModalVoice::setParameters(float baseFreq, float amplitude, float damping,
         updateFilterCoefficients();
     }
     
-    // Actualizar decay rate basado en damping - respuesta MUCHO más dramática
-    // Damping 0 = decay muy lento (largo), damping 1 = decay muy rápido (corto)
-    // Mapeo invertido y más extremo para que sea muy notorio
-    float dampingInverted = 1.0f - currentDamping; // Invertir: 0 = corto, 1 = largo
-    float dampingCurve = dampingInverted * dampingInverted * dampingInverted; // Curva cúbica para más impacto
-    float decayTime = juce::jmap(dampingCurve, 0.01f, 5.0f, 0.0f, 1.0f); // 10ms a 5 segundos (rango muy amplio)
-    envelopeDecay = decayTime > 0.0f ? std::exp(-1.0f / (decayTime * (float)currentSampleRate)) : 0.0f;
+    // Actualizar parámetros ADSR basados en damping y energía
+    // Damping afecta principalmente el decay y release
+    // La energía (amplitude) afecta el attack (golpes fuertes = attack más breve)
+    float dampingInverted = 1.0f - currentDamping;
+    
+    // Attack: golpes fuertes (alta energía) = attack muy breve, micro-hits = attack ligeramente más largo
+    // Mapear currentAmplitude desde [0.5, 0.1] hacia [0.1, 2.0] ms
+    energyScaledAttackMs = juce::jmap(currentAmplitude, 0.5f, 0.1f, 0.1f, 2.0f);
+    
+    // Decay: dependiente de damping (damping bajo = decay largo, damping alto = decay corto)
+    // Mapear dampingInverted² desde [0.0, 1.0] hacia [10.0, 500.0] ms
+    float decayTimeMs = juce::jmap(dampingInverted * dampingInverted, 0.0f, 1.0f, 10.0f, 500.0f);
+    energyScaledDecayMs = decayTimeMs;
+    
+    // Actualizar valores ADSR calculados
+    updateADSRSamples();
+}
+
+//==============================================================================
+void ModalVoice::setGlobalParametersOnly(float metalness, float brightness, float damping)
+{
+    float prevBrightness = currentBrightness;
+    float prevMetalness = currentMetalness;
+    currentDamping = juce::jlimit(0.0f, 1.0f, damping);
+    currentBrightness = juce::jlimit(0.0f, 1.0f, brightness);
+    currentMetalness = juce::jlimit(0.0f, 1.0f, metalness);
+    if (std::abs(prevBrightness - currentBrightness) > 0.01f || std::abs(prevMetalness - currentMetalness) > 0.01f)
+        updateFilterCoefficients();
+    float dampingInverted = 1.0f - currentDamping;
+    energyScaledAttackMs = juce::jmap(currentAmplitude, 0.5f, 0.1f, 0.1f, 2.0f);
+    float decayTimeMs = juce::jmap(dampingInverted * dampingInverted, 0.0f, 1.0f, 10.0f, 500.0f);
+    energyScaledDecayMs = decayTimeMs;
+    updateADSRSamples();
+}
+
+//==============================================================================
+void ModalVoice::setADSR(float attackMs, float decayMs, float sustainLevel, float releaseMs)
+{
+    this->attackMs = juce::jmax(0.1f, attackMs);
+    this->decayMs = juce::jmax(1.0f, decayMs);
+    this->sustainLevel = juce::jlimit(0.0f, 1.0f, sustainLevel);
+    this->releaseMs = juce::jmax(1.0f, releaseMs);
+    
+    updateADSRSamples();
 }
 
 //==============================================================================
@@ -85,7 +123,12 @@ void ModalVoice::trigger()
     generateExcitation();
     isExciting = true;
     excitationPosition = 0;
-    envelope = 1.0f;
+    
+    // Iniciar envolvente ADSR desde Attack
+    envelopeStage = EnvelopeStage::Attack;
+    envelope = 0.0f;
+    envelopeIncrement = attackIncrement;
+    
     residualAmplitude = currentAmplitude;
 }
 
@@ -93,7 +136,7 @@ void ModalVoice::trigger()
 float ModalVoice::renderNextSample()
 {
     // RT-SAFE: Check rápido de actividad (evitar procesamiento si está inactiva)
-    if (envelope <= 0.0001f && !isExciting)
+    if (envelopeStage == EnvelopeStage::Idle && !isExciting)
         return 0.0f;
     
     // Generar excitación si aún está activa - optimizado RT-safe
@@ -112,6 +155,9 @@ float ModalVoice::renderNextSample()
         }
     }
     
+    // Actualizar envolvente ADSR primero (antes de procesar)
+    updateEnvelope();
+    
     // RT-SAFE: Procesar modos (optimizado para 6 modos)
     float output = modes[0].process(excitation) + modes[1].process(excitation) + 
                    modes[2].process(excitation) + modes[3].process(excitation) +
@@ -123,7 +169,7 @@ float ModalVoice::renderNextSample()
         output = formantFilter.process(output);
     }
     
-    // Aplicar envolvente de decaimiento global (optimizado: combinar multiplicaciones)
+    // Aplicar envolvente ADSR
     float envAmp = envelope * currentAmplitude;
     output *= envAmp;
     
@@ -133,8 +179,6 @@ float ModalVoice::renderNextSample()
         float subOscOutput = renderSubOscillator();
         output += subOscOutput * currentSubOscMix * envAmp;
     }
-    
-    envelope *= envelopeDecay;
     
     // Actualizar amplitud residual (para voice stealing) - solo si es significativo
     // RT-SAFE: Usar multiplicación en lugar de std::abs() cuando sea posible
@@ -154,8 +198,8 @@ float ModalVoice::renderNextSample()
 //==============================================================================
 bool ModalVoice::isActive() const
 {
-    // Considerar activa si la envolvente está por encima de un umbral muy bajo
-    return (envelope > 0.0001f) || isExciting; // Usar lógico OR para claridad
+    // Considerar activa si la envolvente no está en Idle o si aún está excitando
+    return (envelopeStage != EnvelopeStage::Idle) || isExciting;
 }
 
 //==============================================================================
@@ -180,6 +224,7 @@ void ModalVoice::reset()
     excitationLength = 0;
     isExciting = false;
     envelope = 0.0f;
+    envelopeStage = EnvelopeStage::Idle;
     residualAmplitude = 0.0f;
 }
 
@@ -240,28 +285,34 @@ void ModalVoice::generateExcitation()
 //==============================================================================
 void ModalVoice::generateNoiseExcitation()
 {
-    // Generar excitación con más contenido de alta frecuencia para timbre metálico
-    // Generar ruido blanco con énfasis en altas frecuencias
-    // Usar diferenciación para crear click más agudo (impulso diferenciado)
-    const float scale = 2.0f;
-    const float offset = -1.0f;
+    // Generar excitación con más contenido de alta frecuencia para timbre metálico "coin cascade"
+    // Aumentar presencia de ruido filtrado en el ataque para reforzar textura granular
+    const float scale = 2.5f; // Aumentado para más presencia
+    const float offset = -1.25f;
     float prevSample = 0.0f;
+    float prevDiff = 0.0f;
     
     for (int i = 0; i < excitationLength; i++)
     {
         // Generar ruido blanco
-        float noise = random.nextFloat() * scale + offset; // -1 a 1
+        float noise = random.nextFloat() * scale + offset; // -1.25 a 1.25
         
-        // Aplicar diferenciación (high-pass implícito) para más contenido de alta frecuencia
-        // Esto crea un click más agudo y metálico
+        // Aplicar diferenciación doble (high-pass más agresivo) para más contenido de alta frecuencia
+        // Esto crea un click más agudo y metálico, característico de objetos metálicos pequeños
         float diff = noise - prevSample;
+        float diff2 = diff - prevDiff; // Segunda derivada para más agudeza
         prevSample = noise;
+        prevDiff = diff;
         
-        // Aplicar envolvente exponencial para suavizar el inicio
+        // Envolvente más agresiva en el ataque (menos suavidad = más percusivo)
         float env = 1.0f - ((float)i / (float)excitationLength);
-        env = env * env; // Envolvente cuadrática para más suavidad
+        // Envolvente menos suave para mantener más energía en el ataque
+        env = std::sqrt(env); // Raíz cuadrada en lugar de cuadrática = menos suave
         
-        excitationBuffer[i] = diff * env * 1.5f; // Amplificar ligeramente para compensar diferenciación
+        // Mezclar señal diferenciada simple y doble para textura más rica
+        float mixed = diff * 0.7f + diff2 * 0.3f;
+        
+        excitationBuffer[i] = mixed * env * 2.0f; // Amplificado para más presencia
     }
 }
 
@@ -458,4 +509,72 @@ float ModalVoice::calculateModeQ(int modeIndex) const
     // Pero también afectamos el decay directamente, así que Q puede ser más constante
     // Reducir Q hasta 40% con damping máximo (menos reducción que antes para mantener ringing)
     return baseQ * (1.0f - currentDamping * 0.4f);
+}
+
+//==============================================================================
+void ModalVoice::updateADSRSamples()
+{
+    // Convertir tiempos de ms a samples y calcular incrementos
+    attackSamples = (float)(energyScaledAttackMs * 0.001 * currentSampleRate);
+    decaySamples = (float)(energyScaledDecayMs * 0.001 * currentSampleRate);
+    releaseSamples = (float)(releaseMs * 0.001 * currentSampleRate);
+    
+    // Calcular incrementos por sample (lineales para simplicidad RT-safe)
+    if (attackSamples > 0.0f)
+        attackIncrement = 1.0f / attackSamples;
+    else
+        attackIncrement = 1.0f; // Attack instantáneo
+    
+    if (decaySamples > 0.0f)
+        decayIncrement = (1.0f - sustainLevel) / decaySamples;
+    else
+        decayIncrement = 1.0f - sustainLevel;
+    
+    if (releaseSamples > 0.0f)
+        releaseIncrement = sustainLevel / releaseSamples;
+    else
+        releaseIncrement = sustainLevel;
+}
+
+//==============================================================================
+void ModalVoice::updateEnvelope()
+{
+    switch (envelopeStage)
+    {
+        case EnvelopeStage::Attack:
+            envelope += attackIncrement;
+            if (envelope >= 1.0f)
+            {
+                envelope = 1.0f;
+                envelopeStage = EnvelopeStage::Decay;
+                envelopeIncrement = -decayIncrement;
+            }
+            break;
+            
+        case EnvelopeStage::Decay:
+            envelope += envelopeIncrement; // Negativo (decay)
+            if (envelope <= sustainLevel)
+            {
+                envelope = 0.0f;
+                envelopeStage = EnvelopeStage::Idle;
+            }
+            break;
+
+        case EnvelopeStage::Sustain:
+            // Unused: percussive envelope goes Decay -> Idle only
+            break;
+            
+        case EnvelopeStage::Release:
+            envelope -= releaseIncrement;
+            if (envelope <= 0.0f)
+            {
+                envelope = 0.0f;
+                envelopeStage = EnvelopeStage::Idle;
+            }
+            break;
+            
+        case EnvelopeStage::Idle:
+            // Ya está inactivo
+            break;
+    }
 }

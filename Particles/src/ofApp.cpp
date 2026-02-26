@@ -1,5 +1,15 @@
 #include "ofApp.h"
 #include <sstream>
+#include <cmath>
+#include <algorithm>
+
+const float ofApp::REST_SPEED_EPSILON_FACTOR = 0.01f;
+static const float ENERGY_FLOOR = 0.01f;  // Suelo perceptible; descartes por debajo (Fase 2)
+
+//--------------------------------------------------------------
+bool ofApp::isExternalForceActive() const {
+    return (mouse.active && mouse.vel.length() >= 1.0f) || (plateAmp >= 0.01f);
+}
 
 //--------------------------------------------------------------
 void ofApp::setup(){
@@ -36,17 +46,35 @@ void ofApp::setup(){
     energy_a = 0.7f;         // Peso de velocidad en energía (0.5-0.9)
     energy_b = 0.3f;         // Peso de distancia en energía (0.1-0.5)
     
+    // Presupuesto por frame (selección por energía antes del token bucket)
+    // Temporary until PAS implements 20ms/4-quadrant fusion.
+    target_hits_per_second = 500.0f;
+
     // Parámetros de rate limiting
-    max_hits_per_second = 800.0f;  // Máximo de hits por segundo (aumentado para más eventos sonoros)
-    burst = 1000.0f;                // Burst máximo (aumentado para permitir más eventos simultáneos)
-    max_hits_per_frame = 50;        // Máximo de hits por frame (aumentado para sonido más denso)
-    
-    // Inicializar rate limiter
+    max_hits_per_second = 800.0f;
+    burst = 1000.0f;
+    max_hits_per_frame = 50;
+    max_hits_border_per_second = 200.0f;   // Fase 4: borde más estricto que p2p
+    max_hits_pp_per_second = 1500.0f;      // Temporal: 1500/s para evitar pp tokens cerca de cero y drops masivos
+
+    // Inicializar rate limiter global (solo max_per_frame y hits_this_frame)
     rate_limiter.tokens = burst;
     rate_limiter.rate = max_hits_per_second;
     rate_limiter.burst = burst;
     rate_limiter.max_per_frame = max_hits_per_frame;
     rate_limiter.hits_this_frame = 0;
+
+    rate_limiter_border.tokens = burst;
+    rate_limiter_border.rate = max_hits_border_per_second;
+    rate_limiter_border.burst = burst;
+    rate_limiter_border.max_per_frame = 0;
+    rate_limiter_border.hits_this_frame = 0;
+
+    rate_limiter_pp.tokens = burst;
+    rate_limiter_pp.rate = max_hits_pp_per_second;
+    rate_limiter_pp.burst = burst;
+    rate_limiter_pp.max_per_frame = 0;
+    rate_limiter_pp.hits_this_frame = 0;
     
     // Inicializar contadores de debug
     hits_per_second = 0.0f;
@@ -54,7 +82,21 @@ void ofApp::setup(){
     hits_discarded_cooldown = 0;
     hits_this_second = 0;
     time_accumulator = 0.0f;
-    
+    hits_candidate_border = 0;
+    hits_candidate_p2p = 0;
+    hits_added_pending = 0;
+    hits_validated = 0;
+    hits_sent_osc = 0;
+    hits_discarded_low_energy = 0;
+    validated_this_frame = 0;
+    sent_this_frame = 0;
+    dropped_rate_this_frame = 0;
+    discarded_by_budget_this_frame = 0;
+    discarded_by_budget_per_sec = 0;
+    discarded_by_budget_accumulator = 0;
+    sent_q0 = sent_q1 = sent_q2 = sent_q3 = 0;
+    discarded_by_budget_q0 = discarded_by_budget_q1 = discarded_by_budget_q2 = discarded_by_budget_q3 = 0;
+
     // Inicializar mouse
     mouse.pos = ofVec2f(0.5f, 0.5f);
     mouse.pos_prev = mouse.pos;
@@ -110,9 +152,34 @@ void ofApp::setup(){
     chladniState = false;
     k_home_previous = k_home;  // Guardar valor inicial
     plateShakerStrength = 30.0f;  // Constante para fuerza del shaker
+
+    // Campo plate precomputado (plan 4.1)
+    gridPlateW = 128;
+    gridPlateH = 128;
+    plateDirty = true;
+    lastPlateRebuildTime = 0.0f;
+    lastBuiltPlateMode = -1;
+    lastBuiltPlateWidth = 0.0f;
+    lastBuiltPlateHeight = 0.0f;
+    update_total_ms = 0.0f;
+    p2p_collision_ms = 0.0f;
+    plate_force_ms = 0.0f;
+    draw_ms = 0.0f;
     
     // Inicializar partículas
     initializeParticles(initialN);
+    
+    // VBO preasignado para partículas (plan 4.2)
+    particlesMesh.setMode(OF_PRIMITIVE_POINTS);
+    particlesMesh.getVertices().resize(kMaxParticles);
+    for (int i = 0; i < kMaxParticles; i++) {
+        particlesMesh.getVertices()[i] = glm::vec3(0, 0, 0);
+    }
+    particlesMesh.getVbo().setVertexData(particlesMesh.getVertices().data(), kMaxParticles, GL_DYNAMIC_DRAW);
+    
+    if (!pointsShader.load("points.vert", "points.frag")) {
+        ofLogWarning("ofApp") << "Points shader not loaded; point size may use legacy glPointSize";
+    }
     
     // Configurar OSC
     setupOSC();
@@ -120,6 +187,14 @@ void ofApp::setup(){
 
 //--------------------------------------------------------------
 void ofApp::update(){
+    // dt centralizado: una sola fuente por frame, clamp para estabilidad
+    const float kDtMax = 1.0f / 30.0f;
+    float raw_dt = ofGetLastFrameTime();
+    if (raw_dt <= 0.0f) raw_dt = 0.016f;
+    dt_sec = (raw_dt > kDtMax) ? kDtMax : raw_dt;
+
+    float t_update_start = ofGetElapsedTimef();
+
     // Actualizar parámetros desde sliders
     // v0.3: Chladni State logic - manejar k_home según estado
     if (chladniState) {
@@ -154,7 +229,11 @@ void ofApp::update(){
     rate_limiter.rate = max_hits_per_second;
     rate_limiter.burst = burst;
     rate_limiter.max_per_frame = max_hits_per_frame;
-    
+    rate_limiter_border.rate = max_hits_border_per_second;
+    rate_limiter_border.burst = burst;
+    rate_limiter_pp.rate = max_hits_pp_per_second;
+    rate_limiter_pp.burst = burst;
+
     // Actualizar tamaño de partículas
     particleSize = particleSizeSlider;
     
@@ -166,6 +245,9 @@ void ofApp::update(){
     plateFreq = plateFreqSlider;
     plateAmp = plateAmpSlider;
     plateMode = plateModeSlider;
+    if (plateMode != lastBuiltPlateMode || ofGetWidth() != lastBuiltPlateWidth || ofGetHeight() != lastBuiltPlateHeight) {
+        plateDirty = true;
+    }
     
     // Detectar cambio en número de partículas
     int targetN = nParticlesSlider;
@@ -179,56 +261,127 @@ void ofApp::update(){
     // Aplicar fuerza de gesto a las partículas
     applyGestureForce();
     
+    float t_plate_start = ofGetElapsedTimef();
     // Aplicar fuerza del Plate Controller a las partículas
     applyPlateForce();
+    plate_force_ms = (ofGetElapsedTimef() - t_plate_start) * 1000.0f;
     
-    // Actualizar física de partículas
-    float dt = ofGetLastFrameTime();
-    if (dt <= 0.0f) dt = 0.016f; // Fallback a 60fps
-    
+    // Actualizar física de partículas (usa dt_sec centralizado)
     // Actualizar tracking de distancia recorrida
     for (auto& p : particles) {
-        p.last_hit_distance += p.vel.length() * dt;
+        p.last_hit_distance += p.vel.length() * dt_sec;
     }
     
     // Actualizar física de partículas
     for (auto& p : particles) {
-        p.update(dt, k_home, k_drag);
+        p.update(dt_sec, k_home, k_drag);
     }
     
     // Limpiar eventos del frame anterior
     pending_hits.clear();
     validated_hits.clear();
-    
-    // Actualizar rate limiter
-    updateRateLimiter(dt);
+    validated_this_frame = 0;
+    sent_this_frame = 0;
+    dropped_rate_this_frame = 0;
+    discarded_by_budget_this_frame = 0;
+
+    // Actualizar rate limiter (refill antes de selección/consumo)
+    updateRateLimiter(dt_sec);
     
     // Detectar y manejar colisiones
     checkCollisions();
     
+    float t_p2p_start = ofGetElapsedTimef();
     // Detectar colisiones entre partículas (si está habilitado)
     if (enable_particle_collisions) {
         checkParticleCollisions();
+    } else {
+        narrow_phase_pairs_checked = 0;
+        collisions_resolved = 0;
     }
-    
+    p2p_collision_ms = (ofGetElapsedTimef() - t_p2p_start) * 1000.0f;
+
+    // Presupuesto por frame con 4 cuadrantes (x,y normalizados; misma regla que PAS: x>=0.5, y>=0.5)
+    float fps_estimate = ofGetFrameRate() > 1.0f ? ofGetFrameRate() : 60.0f;
+    int budget_frame = (int)std::min((float)rate_limiter.max_per_frame, std::ceil(target_hits_per_second / fps_estimate));
+    if (budget_frame < 1) budget_frame = 1;
+
+    auto greater_energy = [](const HitEvent& a, const HitEvent& b) {
+        if (a.energy != b.energy) return a.energy > b.energy;
+        return (a.id * 31 + (a.surface + 1)) < (b.id * 31 + (b.surface + 1));
+    };
+
+    // Repartir presupuesto por cuadrante (q0: x<0.5,y<0.5; q1: x>=0.5,y<0.5; q2: x<0.5,y>=0.5; q3: x>=0.5,y>=0.5)
+    int budget_q[4];
+    int b0 = budget_frame / 4;
+    int rem = budget_frame % 4;
+    for (int i = 0; i < 4; i++) budget_q[i] = b0 + (i < rem ? 1 : 0);
+
+    std::vector<HitEvent> q0, q1, q2, q3;
+    q0.reserve(pending_hits.size() / 4 + 1);
+    q1.reserve(pending_hits.size() / 4 + 1);
+    q2.reserve(pending_hits.size() / 4 + 1);
+    q3.reserve(pending_hits.size() / 4 + 1);
+    for (const auto& e : pending_hits) {
+        int q = (e.x >= 0.5f ? 2 : 0) + (e.y >= 0.5f ? 1 : 0);
+        if (q == 0) q0.push_back(e);
+        else if (q == 1) q1.push_back(e);
+        else if (q == 2) q2.push_back(e);
+        else q3.push_back(e);
+    }
+
+    auto select_top = [&greater_energy](std::vector<HitEvent>& vec, int budget, int& discard_count) {
+        if ((int)vec.size() <= budget) { discard_count = 0; return; }
+        discard_count = (int)vec.size() - budget;
+        std::nth_element(vec.begin(), vec.begin() + (budget - 1), vec.end(), greater_energy);
+        vec.resize(budget);
+        std::partial_sort(vec.begin(), vec.begin() + budget, vec.end(), greater_energy);
+    };
+    int d0 = 0, d1 = 0, d2 = 0, d3 = 0;
+    select_top(q0, budget_q[0], d0);
+    select_top(q1, budget_q[1], d1);
+    select_top(q2, budget_q[2], d2);
+    select_top(q3, budget_q[3], d3);
+
+    discarded_by_budget_q0 += d0;
+    discarded_by_budget_q1 += d1;
+    discarded_by_budget_q2 += d2;
+    discarded_by_budget_q3 += d3;
+    discarded_by_budget_this_frame = d0 + d1 + d2 + d3;
+    discarded_by_budget_accumulator += discarded_by_budget_this_frame;
+
+    pending_hits.clear();
+    for (const auto& e : q0) pending_hits.push_back(e);
+    for (const auto& e : q1) pending_hits.push_back(e);
+    for (const auto& e : q2) pending_hits.push_back(e);
+    for (const auto& e : q3) pending_hits.push_back(e);
+
+    // Token bucket como red de seguridad (processPendingHits)
     // Procesar eventos pendientes con rate limiting
     processPendingHits();
     
-    // Enviar eventos OSC validados
+    // Enviar eventos OSC validados (hits_sent_osc solo al enviar realmente)
     if (oscEnabled) {
         for (const auto& event : validated_hits) {
             sendHitEvent(event);
+            hits_sent_osc++;
+            sent_this_frame++;
+            int q = (event.x >= 0.5f ? 2 : 0) + (event.y >= 0.5f ? 1 : 0);
+            if (q == 0) sent_q0++;
+            else if (q == 1) sent_q1++;
+            else if (q == 2) sent_q2++;
+            else sent_q3++;
         }
         
         // Enviar mensaje /state periódicamente (10 Hz durante actividad)
-        stateSendTimer += dt;
+        stateSendTimer += dt_sec;
         if (stateSendTimer >= stateSendInterval) {
             sendStateMessage();
             stateSendTimer = 0.0f;
         }
         
         // Enviar mensaje /plate con rate limiting (20-30 Hz)
-        plateSendTimer += dt;
+        plateSendTimer += dt_sec;
         if (plateSendTimer >= plateSendInterval) {
             sendPlateMessage();
             plateSendTimer = 0.0f;
@@ -236,19 +389,31 @@ void ofApp::update(){
     }
     
     // Actualizar contadores de debug
-    time_accumulator += dt;
+    time_accumulator += dt_sec;
     if (time_accumulator >= 1.0f) {
         hits_per_second = (float)hits_this_second;
         hits_this_second = 0;
         time_accumulator = 0.0f;
-        // Resetear contadores de hits descartados cada segundo para mostrar tasa actual
+        // Resetear contadores de hits descartados y audit cada segundo para mostrar tasa actual
         hits_discarded_rate = 0;
         hits_discarded_cooldown = 0;
+        hits_candidate_border = 0;
+        hits_candidate_p2p = 0;
+        hits_added_pending = 0;
+        hits_validated = 0;
+        hits_sent_osc = 0;
+        hits_discarded_low_energy = 0;
+        discarded_by_budget_per_sec = discarded_by_budget_accumulator;
+        discarded_by_budget_accumulator = 0;
+        sent_q0 = sent_q1 = sent_q2 = sent_q3 = 0;
+        discarded_by_budget_q0 = discarded_by_budget_q1 = discarded_by_budget_q2 = discarded_by_budget_q3 = 0;
     }
+    update_total_ms = (ofGetElapsedTimef() - t_update_start) * 1000.0f;
 }
 
 //--------------------------------------------------------------
 void ofApp::draw(){
+    float t_draw_start = ofGetElapsedTimef();
     // Fondo oscuro
     ofBackground(10, 10, 15);
     
@@ -261,26 +426,36 @@ void ofApp::draw(){
     ofRotateDeg(cameraRotation);
     ofTranslate(-centerX, -centerY);
     
-    // Render de partículas como puntos
-    ofSetColor(255, 255, 255); // Blanco/azulado metálico
-    glPointSize(particleSize);  // Tamaño variable desde slider
-    glEnable(GL_POINT_SMOOTH);
-    glBegin(GL_POINTS);
-    
-    // Contador de partículas renderizadas (para debug)
-    int rendered_count = 0;
-    for (const auto& p : particles) {
-        glVertex2f(p.pos.x, p.pos.y);
-        rendered_count++;
+    // Actualizar posiciones en el VBO (plan 4.2: updateVertexData, sin clear+addVertex)
+    size_t n = particles.size();
+    if (n > (size_t)kMaxParticles) n = (size_t)kMaxParticles;
+    for (size_t i = 0; i < n; i++) {
+        particlesMesh.getVertices()[i] = glm::vec3(particles[i].pos.x, particles[i].pos.y, 0.0f);
     }
-    glEnd();
-    glDisable(GL_POINT_SMOOTH);
+    if (n > 0) {
+        particlesMesh.getVbo().updateVertexData(particlesMesh.getVertices().data(), (int)n);
+    }
     
-    // Restaurar transformaciones
+    ofSetColor(255, 255, 255);
+    if (pointsShader.isLoaded()) {
+        pointsShader.begin();
+        pointsShader.setUniform1f("uPointSize", particleSize);
+        // MVP = projection * modelview (OpenGL column-major)
+        glm::mat4 mvp = ofGetCurrentMatrix(OF_MATRIX_PROJECTION) * ofGetCurrentMatrix(OF_MATRIX_MODELVIEW);
+        pointsShader.setUniformMatrix4f("modelViewProjectionMatrix", mvp);
+        particlesMesh.getVbo().draw(GL_POINTS, 0, (int)n);
+        pointsShader.end();
+    } else {
+        glPointSize(particleSize);
+        glEnable(GL_POINT_SMOOTH);
+        particlesMesh.getVbo().draw(GL_POINTS, 0, (int)n);
+        glDisable(GL_POINT_SMOOTH);
+    }
+    
     ofPopMatrix();
     
-    // Guardar contador para debug overlay
-    particles_rendered_this_frame = rendered_count;
+    particles_rendered_this_frame = (int)n;
+    draw_ms = (ofGetElapsedTimef() - t_draw_start) * 1000.0f;
     
     // Debug overlay
     drawDebugOverlay();
@@ -291,7 +466,7 @@ void ofApp::draw(){
 
 //--------------------------------------------------------------
 void ofApp::exit(){
-
+    // Limpieza opcional si se añaden recursos (plan Iter 6: higiene)
 }
 
 //--------------------------------------------------------------
@@ -346,14 +521,9 @@ void ofApp::resizeParticles(int newN) {
 
 //--------------------------------------------------------------
 void ofApp::updateMouseInput() {
-    float dt = ofGetLastFrameTime();
-    if (dt <= 0.0f) dt = 0.016f; // Fallback a 60fps
-    
-    // Obtener posición del mouse en pixels
+    // Usar dt_sec centralizado (asignado al inicio de update())
     int mouseX = ofGetMouseX();
     int mouseY = ofGetMouseY();
-    
-    // Normalizar posición (0..1)
     float winWidth = ofGetWidth();
     float winHeight = ofGetHeight();
     
@@ -367,7 +537,7 @@ void ofApp::updateMouseInput() {
         // Calcular velocidad (en pixels/s)
         ofVec2f pos_pixels = ofVec2f(mouse.pos_smooth.x * winWidth, mouse.pos_smooth.y * winHeight);
         ofVec2f pos_prev_pixels = ofVec2f(mouse.pos_prev.x * winWidth, mouse.pos_prev.y * winHeight);
-        mouse.vel = (pos_pixels - pos_prev_pixels) / dt;
+        mouse.vel = (pos_pixels - pos_prev_pixels) / dt_sec;
         
         // Actualizar posición anterior
         mouse.pos_prev = mouse.pos_smooth;
@@ -395,10 +565,7 @@ void ofApp::applyGestureForce() {
     // Velocidad normalizada (0..1)
     float speed = ofClamp(vel_magnitude / speed_ref, 0.0f, 1.0f);
     
-    // Aplicar fuerza a cada partícula
-    float dt = ofGetLastFrameTime();
-    if (dt <= 0.0f) dt = 0.016f;
-    
+    // Aplicar fuerza a cada partícula (usa dt_sec centralizado)
     for (auto& p : particles) {
         // Distancia desde partícula al mouse (en pixels)
         ofVec2f particlePosPixels = ofVec2f(p.pos.x, p.pos.y);
@@ -428,7 +595,7 @@ void ofApp::applyGestureForce() {
         ofVec2f F_gesture = k_gesture * w * speed * push_dir;
         
         // Aplicar fuerza directamente a la velocidad (impulso)
-        p.vel += (F_gesture / p.mass) * dt;
+        p.vel += (F_gesture / p.mass) * dt_sec;
     }
 }
 
@@ -452,229 +619,160 @@ void ofApp::getModeCoefficients(int mode, int& m, int& n, float& a, float& b) {
 }
 
 //--------------------------------------------------------------
-void ofApp::applyPlateForce() {
-    // Solo aplicar fuerza si la amplitud del plate es significativa
-    if (plateAmp < 0.01f) {
-        return; // Plate silencioso, no aplicar fuerza
-    }
-    
-    float winWidth = ofGetWidth();
-    float winHeight = ofGetHeight();
-    
-    // ============================================================
-    // 1. SISTEMA DE COORDENADAS DE PLACA FIJO (centro inmutable)
-    // ============================================================
-    // Centro de la placa: siempre el centro de la ventana (FIJO)
-    float plateCenterX = winWidth * 0.5f;
-    float plateCenterY = winHeight * 0.5f;
-    
-    // Tamaño de la placa: usar toda la ventana (FIJO)
-    float plateSizeX = winWidth;
-    float plateSizeY = winHeight;
-    
-    // ============================================================
-    // 2. MAPEO DE plate_mode → (m, n) Y COEFICIENTES (a, b)
-    // ============================================================
-    // plate_mode define el patrón espacial (nodos/antinodos)
-    // NO debe depender de freq - el patrón es estacionario
-    // Para modos degenerados (m != n), se mezclan ambos modos
+void ofApp::rebuildPlateField(int mode, float plateSizeX, float plateSizeY) {
+    const float PI_VAL = 3.14159265358979323846f;
     int m, n;
     float a, b;
-    getModeCoefficients(plateMode, m, n, a, b);
-    
-    // ============================================================
-    // 3. FRECUENCIA SOLO PARA INTENSIDAD/ANIMACIÓN TEMPORAL
-    // ============================================================
-    // plate_freq NO modifica el patrón espacial
-    // Solo se usa para intensidad de excitación
-    float freqNorm = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
-    float excitationIntensity = 0.5f + freqNorm * 0.5f; // 0.5 a 1.0
-    
-    // Intensidad de fuerza base: combina amplitud y frecuencia (solo para intensidad)
-    float forceIntensityBase = plateForceStrength * plateAmp * excitationIntensity;
-    
-    // ============================================================
-    // 4. PARÁMETROS DE ESTABILIDAD Y NORMALIZACIÓN
-    // ============================================================
-    const float PI_VAL = 3.14159265358979323846f;
-    
-    // Parámetros de estabilidad (constantes locales)
-    const float F_MAX = 100.0f;  // Límite de magnitud de fuerza
-    const float THRESHOLD_NODE = 0.1f;  // Umbral de |U| para activar amortiguación extra
-    const float EXTRA_DAMPING = 0.3f;  // Fuerza de amortiguación adicional
-    const float SIGMA_SPATIAL = 0.4f;  // Ancho gaussiano para centrado (en coordenadas normalizadas)
-    
-    // Factor de normalización por modo (para evitar que modos altos dominen)
+    getModeCoefficients(mode, m, n, a, b);
     float norm_factor = 1.0f / (float)(m + n);
-    
-    // Aplicar fuerza a cada partícula basada en campo de Chladni
-    float dt = ofGetLastFrameTime();
-    if (dt <= 0.0f) dt = 0.016f;
-    // v0.3: Asegurar dt consistente (clamp para evitar variaciones extremas de FPS)
-    if (dt > 1.0f/30.0f) dt = 1.0f/30.0f;  // Máximo 30fps equivalente
-    
+
+    size_t numCells = (size_t)gridPlateW * (size_t)gridPlateH;
+    plateGradE.resize(numCells);
+    plateU.resize(numCells);
+
+    for (int iy = 0; iy < gridPlateH; ++iy) {
+        for (int ix = 0; ix < gridPlateW; ++ix) {
+            float xHat = (ix + 0.5f) / (float)gridPlateW;
+            float yHat = (iy + 0.5f) / (float)gridPlateH;
+
+            float U1 = sin(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
+            float U2 = sin(n * PI_VAL * xHat) * sin(m * PI_VAL * yHat);
+            float U_field = a * U1 + b * U2;
+
+            float dU1_dxHat = m * PI_VAL * cos(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
+            float dU1_dyHat = n * PI_VAL * sin(m * PI_VAL * xHat) * cos(n * PI_VAL * yHat);
+            float dU2_dxHat = n * PI_VAL * cos(n * PI_VAL * xHat) * sin(m * PI_VAL * yHat);
+            float dU2_dyHat = m * PI_VAL * sin(n * PI_VAL * xHat) * cos(m * PI_VAL * yHat);
+            float dU_dxHat = a * dU1_dxHat + b * dU2_dxHat;
+            float dU_dyHat = a * dU1_dyHat + b * dU2_dyHat;
+
+            float U_norm = U_field * norm_factor;
+            float dU_dxHat_norm = dU_dxHat * norm_factor;
+            float dU_dyHat_norm = dU_dyHat * norm_factor;
+            float dE_dxHat = 2.0f * U_norm * dU_dxHat_norm;
+            float dE_dyHat = 2.0f * U_norm * dU_dyHat_norm;
+
+            float gradX_world = dE_dxHat / plateSizeX;
+            float gradY_world = dE_dyHat / plateSizeY;
+
+            size_t idx = (size_t)iy * (size_t)gridPlateW + (size_t)ix;
+            plateGradE[idx] = ofVec2f(gradX_world, gradY_world);
+            plateU[idx] = U_norm;
+        }
+    }
+    lastBuiltPlateMode = mode;
+    lastBuiltPlateWidth = plateSizeX;
+    lastBuiltPlateHeight = plateSizeY;
+}
+
+//--------------------------------------------------------------
+void ofApp::applyPlateForce() {
+    if (plateAmp < 0.01f) {
+        return;
+    }
+
+    float winWidth = ofGetWidth();
+    float winHeight = ofGetHeight();
+    float plateCenterX = winWidth * 0.5f;
+    float plateCenterY = winHeight * 0.5f;
+    float plateSizeX = winWidth;
+    float plateSizeY = winHeight;
+
+    // Rebuild con debounce (máx cada 50 ms mientras plateDirty; plan 4.1.1)
+    float now = ofGetElapsedTimef();
+    if (plateDirty && (now - lastPlateRebuildTime >= 0.05f)) {
+        rebuildPlateField(plateMode, plateSizeX, plateSizeY);
+        lastPlateRebuildTime = now;
+        plateDirty = false;
+    }
+
+    if (plateGradE.empty() || plateU.empty()) return;
+
+    float freqNorm = ofClamp((plateFreq - 20.0f) / (2000.0f - 20.0f), 0.0f, 1.0f);
+    float excitationIntensity = 0.5f + freqNorm * 0.5f;
+    float forceIntensityBase = plateForceStrength * plateAmp * excitationIntensity;
+
+    const float F_MAX = 100.0f;
+    const float THRESHOLD_NODE = 0.1f;
+    const float EXTRA_DAMPING = 0.3f;
+    const float SIGMA_SPATIAL = 0.4f;
+
+    int gw = gridPlateW;
+    int gh = gridPlateH;
+    float u_scale = (gw > 1) ? (float)(gw - 1) : 1.0f;
+    float v_scale = (gh > 1) ? (float)(gh - 1) : 1.0f;
+
     for (auto& p : particles) {
-        // ============================================================
-        // 4a. TRANSFORMAR: pos_world → pos_plate → (x̂, ŷ) normalizado
-        // ============================================================
-        // Convertir posición de partícula a coordenadas locales de placa
-        float xLocal = p.pos.x - plateCenterX;  // Coordenada local respecto al centro FIJO
+        float xLocal = p.pos.x - plateCenterX;
         float yLocal = p.pos.y - plateCenterY;
-        
-        // Normalizar a rango [0, 1] para que coincida con sin(mπx) donde x ∈ [0,1]
-        // Mapear [-size/2, +size/2] → [0, 1]
-        float xHat = 0.5f + (xLocal / plateSizeX) * 0.5f;
-        float yHat = 0.5f + (yLocal / plateSizeY) * 0.5f;
-        
-        // Clamp para asegurar que esté dentro de la placa
-        xHat = ofClamp(xHat, 0.0f, 1.0f);
-        yHat = ofClamp(yHat, 0.0f, 1.0f);
-        
-        // ============================================================
-        // 4b. CALCULAR CAMPO ESTACIONARIO CON MEZCLA DE MODOS DEGENERADOS
-        // ============================================================
-        // Calcular ambos términos del campo si m != n (modos degenerados)
-        float U1 = sin(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
-        float U2 = sin(n * PI_VAL * xHat) * sin(m * PI_VAL * yHat);
-        
-        // Combinar campo según coeficientes
-        float U_field = a * U1 + b * U2;
-        
-        // ============================================================
-        // 4c. CALCULAR GRADIENTES DE AMBOS TÉRMINOS Y COMBINAR
-        // ============================================================
-        // Gradientes de U1 y U2 en coordenadas normalizadas
-        float dU1_dxHat = m * PI_VAL * cos(m * PI_VAL * xHat) * sin(n * PI_VAL * yHat);
-        float dU1_dyHat = n * PI_VAL * sin(m * PI_VAL * xHat) * cos(n * PI_VAL * yHat);
-        
-        float dU2_dxHat = n * PI_VAL * cos(n * PI_VAL * xHat) * sin(m * PI_VAL * yHat);
-        float dU2_dyHat = m * PI_VAL * sin(n * PI_VAL * xHat) * cos(m * PI_VAL * yHat);
-        
-        // Combinar gradientes según coeficientes
-        float dU_dxHat = a * dU1_dxHat + b * dU2_dxHat;
-        float dU_dyHat = a * dU1_dyHat + b * dU2_dyHat;
-        
-        // ============================================================
-        // 4d. NORMALIZAR U Y ∇U ANTES DE CALCULAR ENERGÍA
-        // ============================================================
-        // Normalizar para evitar que modos altos dominen
-        float U_norm = U_field * norm_factor;
-        float dU_dxHat_norm = dU_dxHat * norm_factor;
-        float dU_dyHat_norm = dU_dyHat * norm_factor;
-        
-        // ============================================================
-        // 4e. CALCULAR ENERGÍA E = U² Y SU GRADIENTE ∇E = 2U∇U
-        // ============================================================
-        // Energía: E = U²
-        float E = U_norm * U_norm;
-        
-        // Gradiente de energía: ∇E = 2U * ∇U
-        float dE_dxHat = 2.0f * U_norm * dU_dxHat_norm;
-        float dE_dyHat = 2.0f * U_norm * dU_dyHat_norm;
-        
-        // Convertir gradiente de coordenadas normalizadas a coordenadas mundo
-        float gradX_world = dE_dxHat / plateSizeX;
-        float gradY_world = dE_dyHat / plateSizeY;
-        
-        ofVec2f gradE = ofVec2f(gradX_world, gradY_world);
+        float xHat = ofClamp(0.5f + (xLocal / plateSizeX) * 0.5f, 0.0f, 1.0f);
+        float yHat = ofClamp(0.5f + (yLocal / plateSizeY) * 0.5f, 0.0f, 1.0f);
+
+        // Muestreo bilinear de ∇E y U (sin trig por partícula)
+        float u = xHat * u_scale;
+        float v = yHat * v_scale;
+        int i0 = ofClamp((int)u, 0, gw - 1);
+        int j0 = ofClamp((int)v, 0, gh - 1);
+        int i1 = ofMin(i0 + 1, gw - 1);
+        int j1 = ofMin(j0 + 1, gh - 1);
+        float fu = u - i0;
+        float fv = v - j0;
+
+        ofVec2f g00 = plateGradE[(size_t)j0 * gw + i0];
+        ofVec2f g10 = plateGradE[(size_t)j0 * gw + i1];
+        ofVec2f g01 = plateGradE[(size_t)j1 * gw + i0];
+        ofVec2f g11 = plateGradE[(size_t)j1 * gw + i1];
+        ofVec2f gradE(g00.x * (1.0f - fu) * (1.0f - fv) + g10.x * fu * (1.0f - fv) + g01.x * (1.0f - fu) * fv + g11.x * fu * fv,
+                      g00.y * (1.0f - fu) * (1.0f - fv) + g10.y * fu * (1.0f - fv) + g01.y * (1.0f - fu) * fv + g11.y * fu * fv);
+
+        float U00 = plateU[(size_t)j0 * gw + i0];
+        float U10 = plateU[(size_t)j0 * gw + i1];
+        float U01 = plateU[(size_t)j1 * gw + i0];
+        float U11 = plateU[(size_t)j1 * gw + i1];
+        float U_norm = U00 * (1.0f - fu) * (1.0f - fv) + U10 * fu * (1.0f - fv) + U01 * (1.0f - fu) * fv + U11 * fu * fv;
+
         float gradMag = gradE.length();
-        
-        if (gradMag < 0.0001f) {
-            // Estamos muy cerca de un nodo exacto, no aplicar fuerza
-            continue;
-        }
-        
-        // ============================================================
-        // 4f. CENTRADO SUAVE DE EXCITACIÓN (peso espacial gaussiano)
-        // ============================================================
-        // Calcular distancia al centro usando coordenadas normalizadas
-        float centerX_norm = 0.5f;
-        float centerY_norm = 0.5f;
-        float dist_norm = sqrt((xHat - centerX_norm) * (xHat - centerX_norm) + 
-                               (yHat - centerY_norm) * (yHat - centerY_norm));
-        
-        // Aplicar peso gaussiano (reduce fuerza en bordes, centra excitación)
+        if (gradMag < 0.0001f) continue;
+
+        float dist_norm = sqrt((xHat - 0.5f) * (xHat - 0.5f) + (yHat - 0.5f) * (yHat - 0.5f));
         float spatial_weight = exp(-dist_norm * dist_norm / (2.0f * SIGMA_SPATIAL * SIGMA_SPATIAL));
-        
-        // Intensidad de fuerza con peso espacial
         float forceIntensity = forceIntensityBase * spatial_weight;
-        
-        // ============================================================
-        // 4g. CALCULAR FUERZA F = -∇E
-        // ============================================================
-        // Fuerza es opuesta al gradiente de energía (hacia nodos donde E es mínimo)
+
         ofVec2f F_plate = -gradE * forceIntensity;
-        
-        // ============================================================
-        // 4h. CLAMP MAGNITUD DE FUERZA (estabilidad)
-        // ============================================================
         float F_mag = F_plate.length();
-        if (F_mag > F_MAX) {
-            F_plate = F_plate * (F_MAX / F_mag);
-        }
-        
-        // ============================================================
-        // 4i. APLICAR FUERZA A VELOCIDAD
-        // ============================================================
-        p.vel += (F_plate / p.mass) * dt;
-        
-        // ============================================================
-        // 4j. AMORTIGUACIÓN ADICIONAL CERCA DE NODOS
-        // ============================================================
-        // Detectar cuando |U| < threshold_node y aplicar amortiguación extra
+        if (F_mag > F_MAX) F_plate *= (F_MAX / F_mag);
+
+        p.vel += (F_plate / p.mass) * dt_sec;
+
         float U_abs = fabs(U_norm);
         if (U_abs < THRESHOLD_NODE) {
-            // Calcular fuerza de amortiguación (aumenta cuando |U| → 0)
             float damping_strength = EXTRA_DAMPING * (1.0f - U_abs / THRESHOLD_NODE);
-            // Factor de amortiguación que REDUCE velocidad (factor < 1.0)
             float damping_factor = 1.0f / (1.0f + damping_strength);
-            // Aplicar a velocidad
             p.vel *= damping_factor;
         }
-        
-        // ============================================================
-        // v0.3: PLATE SHAKER FORCE (inyección de energía sin mouse)
-        // ============================================================
-        // Solo aplicar si Chladni State está activo y plate tiene amplitud significativa
+
         if (chladniState && plateAmp >= 0.01f) {
-            // Calcular energía normalizada y shaped
-            float E_clamped = ofClamp(E, 0.0f, 1.0f);  // Asegurar rango [0,1]
-            float E_shaped = pow(E_clamped, 2.0f);  // Concentrar agitación en antinodos
-            
-            // Calcular magnitud del shaker
+            float E_clamped = ofClamp(U_norm * U_norm, 0.0f, 1.0f);
+            float E_shaped = pow(E_clamped, 2.0f);
             float shaker_magnitude = plateShakerStrength * plateAmp * E_shaped;
-            
-            // Dirección coherente usando noise field (Opción A - RECOMENDADA)
-            // Usa ofSignedNoise para producir agitación espacialmente coherente
-            float noise_scale = 0.01f;  // Escala espacial
-            float time_scale = 0.5f;   // Velocidad temporal
-            float offset = 100.0f;      // Offset para segunda componente
+
+            float noise_scale = 0.01f;
+            float time_scale = 0.5f;
+            float offset = 100.0f;
             float time = ofGetElapsedTimef();
-            
             float dir_x = ofSignedNoise(p.pos.x * noise_scale, p.pos.y * noise_scale, time * time_scale);
             float dir_y = ofSignedNoise(p.pos.x * noise_scale + offset, p.pos.y * noise_scale + offset, time * time_scale);
-            
+
             ofVec2f direction(dir_x, dir_y);
             float dir_mag = direction.length();
-            if (dir_mag > 0.001f) {
-                direction = direction / dir_mag;  // Normalizar
-            } else {
-                // Fallback si dirección es demasiado pequeña
-                direction = ofVec2f(1.0f, 0.0f);
-            }
-            
-            // Fuerza del shaker
+            if (dir_mag > 0.001f) direction /= dir_mag;
+            else direction = ofVec2f(1.0f, 0.0f);
+
             ofVec2f F_shaker = direction * shaker_magnitude;
-            
-            // Clamp magnitud relativo a F_MAX (no magic number)
             const float F_SHAKER_MAX = 0.5f * F_MAX;
             float F_shaker_mag = F_shaker.length();
-            if (F_shaker_mag > F_SHAKER_MAX) {
-                F_shaker = F_shaker * (F_SHAKER_MAX / F_shaker_mag);
-            }
-            
-            // Aplicar fuerza del shaker a velocidad
-            p.vel += (F_shaker / p.mass) * dt;
+            if (F_shaker_mag > F_SHAKER_MAX) F_shaker *= (F_SHAKER_MAX / F_shaker_mag);
+            p.vel += (F_shaker / p.mass) * dt_sec;
         }
     }
 }
@@ -718,57 +816,110 @@ void ofApp::checkCollisions() {
 
 //--------------------------------------------------------------
 void ofApp::checkParticleCollisions() {
-    float width = ofGetWidth();
-    float height = ofGetHeight();
-    float collision_distance = particle_radius * 2.0f;  // Distancia mínima para colisión
-    
-    // Guardar velocidades PRE-colisión para todas las partículas
+    float simWidth = ofGetWidth();
+    float simHeight = ofGetHeight();
+    // Geometría unívoca: r = particle_radius, collision_distance = 2*r, cell_size = collision_distance
+    float collision_distance = particle_radius * 2.0f;
+    float cell_size = collision_distance;
+
+    // Dimensiones del grid fijo acotado a la simulación
+    gridW = (simWidth > 0 && cell_size > 0) ? (int)std::ceil(simWidth / cell_size) : 0;
+    gridH = (simHeight > 0 && cell_size > 0) ? (int)std::ceil(simHeight / cell_size) : 0;
+    if (gridW < 1 || gridH < 1) {
+        narrow_phase_pairs_checked = 0;
+        collisions_resolved = 0;
+        return;
+    }
+
+    size_t numCells = (size_t)gridW * (size_t)gridH;
+    if (grid.size() != numCells) {
+        grid.resize(numCells);
+    }
+    for (auto& cell : grid) {
+        cell.clear();
+    }
+
+    // Insertar partículas en el grid (clamp a celdas borde si fuera de límites)
+    float inv_cs = 1.0f / cell_size;
+    for (size_t i = 0; i < particles.size(); ++i) {
+        int cx = (int)std::floor(particles[i].pos.x * inv_cs);
+        int cy = (int)std::floor(particles[i].pos.y * inv_cs);
+        cx = ofClamp(cx, 0, gridW - 1);
+        cy = ofClamp(cy, 0, gridH - 1);
+        size_t idx = (size_t)cy * (size_t)gridW + (size_t)cx;
+        grid[idx].push_back(i);
+    }
+
+    // Guardar velocidades PRE-colisión para todas las partículas (solo para energía de evento)
     for (auto& p : particles) {
         p.vel_pre = p.vel;
     }
-    
-    // Detectar colisiones entre todas las parejas de partículas
-    // Usar doble loop pero evitar procesar la misma pareja dos veces
-    for (size_t i = 0; i < particles.size(); i++) {
+
+    narrow_phase_pairs_checked = 0;
+    collisions_resolved = 0;
+
+    // Límite de corrección posicional por partícula por frame (plan 3.4)
+    if (correction_used.size() != particles.size()) {
+        correction_used.resize(particles.size());
+    }
+    std::fill(correction_used.begin(), correction_used.end(), 0.0f);
+    const float slop = 0.15f * particle_radius;
+    const float correction_percent = 0.4f;
+    const float e_clamped = ofClamp(restitution, 0.0f, 1.0f);
+
+    // Para cada partícula, solo comprobar vecindad 3×3
+    for (size_t i = 0; i < particles.size(); ++i) {
         Particle& p1 = particles[i];
-        
-        for (size_t j = i + 1; j < particles.size(); j++) {
-            Particle& p2 = particles[j];
-            
-            // Calcular distancia entre partículas
-            ofVec2f diff = p1.pos - p2.pos;
-            float distance = diff.length();
-            
-            // Verificar si hay colisión
-            if (distance < collision_distance && distance > 0.001f) {  // Evitar división por cero
-                // Calcular punto de colisión (punto medio)
-                ofVec2f collisionPoint = (p1.pos + p2.pos) * 0.5f;
-                
-                // Aplicar rebote físico (colisión elástica simple)
-                // Calcular velocidad relativa usando velocidades PRE-colisión
-                ofVec2f relVel = p1.vel_pre - p2.vel_pre;
-                ofVec2f normal = diff.normalized();
-                
-                // Componente de velocidad relativa en dirección normal
-                float velAlongNormal = relVel.dot(normal);
-                
-                // Solo procesar si las partículas se están acercando
-                if (velAlongNormal < 0.0f) {
-                    // Calcular impulso (simplificado, asumiendo masas iguales)
-                    float impulse = velAlongNormal * (1.0f + restitution);
-                    
-                    // Aplicar impulso a ambas partículas
-                    p1.vel -= normal * impulse * 0.5f;
-                    p2.vel += normal * impulse * 0.5f;
-                    
-                    // Separar partículas para evitar penetración
-                    float overlap = collision_distance - distance;
-                    ofVec2f separation = normal * overlap * 0.5f;
-                    p1.pos += separation;
-                    p2.pos -= separation;
-                    
-                    // Generar evento de hit (usa vel_pre que ya fue guardado)
+        int cx = (int)std::floor(p1.pos.x * inv_cs);
+        int cy = (int)std::floor(p1.pos.y * inv_cs);
+        cx = ofClamp(cx, 0, gridW - 1);
+        cy = ofClamp(cy, 0, gridH - 1);
+
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                int nx = cx + dx;
+                int ny = cy + dy;
+                if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
+                size_t nkey = (size_t)ny * (size_t)gridW + (size_t)nx;
+                for (size_t j : grid[nkey]) {
+                    if (j <= i) continue;
+                    Particle& p2 = particles[j];
+
+                    narrow_phase_pairs_checked++;
+
+                    ofVec2f diff = p1.pos - p2.pos;
+                    float dist = diff.length();
+                    // Épsilon mínimo de distancia (plan 3.4)
+                    if (dist < 1e-6f) continue;
+                    ofVec2f n = diff / dist;
+                    // Resolución física con velocidades ACTUALES (p.vel)
+                    float v_n = (p1.vel - p2.vel).dot(n);
+                    if (v_n >= 0.0f) continue;  // separándose
+
+                    // Impulso: j_impulse = -(1+e)*v_n/2 (masas iguales); n de p2 a p1
+                    float j_impulse = -(1.0f + e_clamped) * v_n * 0.5f;
+                    p1.vel += n * j_impulse;
+                    p2.vel -= n * j_impulse;
+
+                    // Corrección posicional: slop + percent + límite por frame (plan 3.4)
+                    float overlap = collision_distance - dist;
+                    if (overlap > slop) {
+                        float corr_each = (overlap - slop) * correction_percent * 0.5f;
+                        float max_left_i = collision_distance - correction_used[i];
+                        float max_left_j = collision_distance - correction_used[j];
+                        corr_each = ofMin(corr_each, ofMin(max_left_i, max_left_j));
+                        if (corr_each > 0.0f) {
+                            p1.pos += n * corr_each;
+                            p2.pos -= n * corr_each;
+                            correction_used[i] += corr_each;
+                            correction_used[j] += corr_each;
+                        }
+                    }
+
+                    // Evento de hit (energía usa vel_pre; no modifica velocidades)
+                    ofVec2f collisionPoint = (p1.pos + p2.pos) * 0.5f;
                     generateParticleHitEvent(p1, p2, collisionPoint);
+                    collisions_resolved++;
                 }
             }
         }
@@ -783,8 +934,9 @@ float ofApp::calculateHitEnergy(Particle& p, int surface) {
     // Distancia normalizada: dist_norm = last_hit_distance / dist_ref
     float dist_norm = ofClamp(p.last_hit_distance / dist_ref, 0.0f, 1.0f);
     
-    // Energía combinada: energy = clamp(a * speed_norm + b * dist_norm, 0..1)
-    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm, 0.0f, 1.0f);
+    // Energía: dist_norm ponderado por speed_norm para no generar energía en reposo
+    // energy = energy_a * speed_norm + energy_b * dist_norm * speed_norm (clamp 0..1)
+    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm * speed_norm, 0.0f, 1.0f);
     
     // Validación mínima: descartar ruido numérico extremo
     if (energy < 0.001f) {
@@ -803,12 +955,12 @@ float ofApp::calculateParticleCollisionEnergy(Particle& p1, Particle& p2) {
     // Normalizar velocidad relativa usando vel_ref
     float speed_norm = ofClamp(relSpeed / vel_ref, 0.0f, 1.0f);
     
-    // Usar distancia promedio desde último hit (o usar distancia actual si no hay hit previo)
+    // Usar distancia promedio desde último hit
     float avg_distance = (p1.last_hit_distance + p2.last_hit_distance) * 0.5f;
     float dist_norm = ofClamp(avg_distance / dist_ref, 0.0f, 1.0f);
     
-    // Energía combinada: energy = clamp(a * speed_norm + b * dist_norm, 0..1)
-    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm, 0.0f, 1.0f);
+    // Energía: dist_norm ponderado por speed_norm (clamp 0..1)
+    float energy = ofClamp(energy_a * speed_norm + energy_b * dist_norm * speed_norm, 0.0f, 1.0f);
     
     // Validación mínima: descartar ruido numérico extremo
     if (energy < 0.001f) {
@@ -820,46 +972,53 @@ float ofApp::calculateParticleCollisionEnergy(Particle& p1, Particle& p2) {
 
 //--------------------------------------------------------------
 void ofApp::generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisionPoint) {
-    float timeNow = ofGetElapsedTimef();
-    
-    // Verificar cooldown para ambas partículas
-    float timeSinceLastHit1 = timeNow - p1.lastHitTime;
-    float timeSinceLastHit2 = timeNow - p2.lastHitTime;
-    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
-    
-    // Solo generar evento si ambas partículas están fuera del cooldown
-    // (o al menos una, para evitar perder eventos)
-    if (timeSinceLastHit1 < cooldown_seconds && timeSinceLastHit2 < cooldown_seconds) {
-        hits_discarded_cooldown++;
-        return; // Ambas partículas en cooldown
+    // Rest gate (Fase 1): velocidad normal de colisión; no tocar lastHitTime/last_hit_distance si no pasamos
+    float rest_epsilon = REST_SPEED_EPSILON_FACTOR * vel_ref;
+    ofVec2f diff = p1.pos - p2.pos;
+    float dist = diff.length();
+    ofVec2f collisionNormal;
+    if (dist >= 1e-6f) {
+        collisionNormal = diff / dist;
     }
-    
+    ofVec2f vrel = p1.vel_pre - p2.vel_pre;
+    float vn = (dist >= 1e-6f) ? std::abs(vrel.dot(collisionNormal)) : vrel.length();
+    if (vn < rest_epsilon && !isExternalForceActive()) {
+        return;
+    }
+
+    hits_candidate_p2p++;
+
     // Calcular energía del impacto
     float energy = calculateParticleCollisionEnergy(p1, p2);
-    
-    if (energy <= 0.0f) {
-        return; // Energía demasiado baja (ruido numérico)
+    if (energy < ENERGY_FLOOR) {
+        hits_discarded_low_energy++;
+        return;
     }
-    
+
+    float timeNow = ofGetElapsedTimef();
+    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
+    float timeSinceLastHit1 = timeNow - p1.lastHitTime;
+    float timeSinceLastHit2 = timeNow - p2.lastHitTime;
+    if (timeSinceLastHit1 < cooldown_seconds && timeSinceLastHit2 < cooldown_seconds) {
+        hits_discarded_cooldown++;
+        return;
+    }
+
     // Crear evento de hit usando la partícula con mayor energía o la primera
-    // Usar punto de colisión como posición
     Particle& p = (p1.vel_pre.length() > p2.vel_pre.length()) ? p1 : p2;
-    
     HitEvent event;
-    event.id = p.id;  // Usar ID de la partícula con mayor velocidad
+    event.id = p.id;
     event.x = ofClamp(collisionPoint.x / ofGetWidth(), 0.0f, 1.0f);
     event.y = ofClamp(collisionPoint.y / ofGetHeight(), 0.0f, 1.0f);
     event.energy = energy;
-    event.surface = -1;  // -1 indica colisión partícula-partícula (no superficie)
-    
-    // Agregar a eventos pendientes
+    event.surface = -1;
+
     pending_hits.push_back(event);
-    
-    // Actualizar estado de ambas partículas
+    hits_added_pending++;
+
     p1.lastHitTime = timeNow;
     p1.last_hit_distance = 0.0f;
     p1.last_surface = -1;
-    
     p2.lastHitTime = timeNow;
     p2.last_hit_distance = 0.0f;
     p2.last_surface = -1;
@@ -867,36 +1026,43 @@ void ofApp::generateParticleHitEvent(Particle& p1, Particle& p2, ofVec2f collisi
 
 //--------------------------------------------------------------
 void ofApp::generateHitEvent(Particle& p, int surface) {
-    float timeNow = ofGetElapsedTimef();
-    
-    // Verificar cooldown por partícula
-    float timeSinceLastHit = timeNow - p.lastHitTime;
-    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
-    
-    if (timeSinceLastHit < cooldown_seconds) {
-        hits_discarded_cooldown++;
-        return; // Partícula en cooldown
+    // Rest gate (Fase 1): componente normal de velocidad al borde
+    float rest_epsilon = REST_SPEED_EPSILON_FACTOR * vel_ref;
+    ofVec2f borderNormal;
+    if (surface == 0) borderNormal.set(-1.0f, 0.0f);       // L
+    else if (surface == 1) borderNormal.set(1.0f, 0.0f);     // R
+    else if (surface == 2) borderNormal.set(0.0f, -1.0f);  // T
+    else borderNormal.set(0.0f, 1.0f);                      // B
+    float vn = std::abs(p.vel_pre.dot(borderNormal));
+    if (vn < rest_epsilon && !isExternalForceActive()) {
+        return;
     }
-    
-    // Calcular energía del impacto
+
+    hits_candidate_border++;
+
     float energy = calculateHitEnergy(p, surface);
-    
-    if (energy <= 0.0f) {
-        return; // Energía demasiado baja (ruido numérico)
+    if (energy < ENERGY_FLOOR) {
+        hits_discarded_low_energy++;
+        return;
     }
-    
-    // Crear evento de hit
+
+    float timeNow = ofGetElapsedTimef();
+    float cooldown_seconds = hit_cooldown_ms / 1000.0f;
+    if (timeNow - p.lastHitTime < cooldown_seconds) {
+        hits_discarded_cooldown++;
+        return;
+    }
+
     HitEvent event;
     event.id = p.id;
     event.x = ofClamp(p.pos.x / ofGetWidth(), 0.0f, 1.0f);
     event.y = ofClamp(p.pos.y / ofGetHeight(), 0.0f, 1.0f);
     event.energy = energy;
     event.surface = surface;
-    
-    // Agregar a eventos pendientes
+
     pending_hits.push_back(event);
-    
-    // Actualizar estado de partícula
+    hits_added_pending++;
+
     p.lastHitTime = timeNow;
     p.last_hit_distance = 0.0f;
     p.last_surface = surface;
@@ -904,48 +1070,43 @@ void ofApp::generateHitEvent(Particle& p, int surface) {
 
 //--------------------------------------------------------------
 void ofApp::updateRateLimiter(float dt) {
-    // Token bucket: tokens += rate * dt
-    rate_limiter.tokens += rate_limiter.rate * dt;
-    
-    // Limitar tokens al burst máximo
-    rate_limiter.tokens = ofMin(rate_limiter.tokens, rate_limiter.burst);
-    
-    // Resetear contador de hits este frame
+    // dt must be in seconds. Refill: tokens = min(burst, tokens + rate_per_sec * dt_sec)
+    float dt_sec = dt;
+    rate_limiter_border.tokens = ofMin(rate_limiter_border.burst, rate_limiter_border.tokens + rate_limiter_border.rate * dt_sec);
+    rate_limiter_pp.tokens = ofMin(rate_limiter_pp.burst, rate_limiter_pp.tokens + rate_limiter_pp.rate * dt_sec);
     rate_limiter.hits_this_frame = 0;
 }
 
 //--------------------------------------------------------------
-bool ofApp::canEmitHit() {
-    // Verificar que hay tokens disponibles
-    if (rate_limiter.tokens < 1.0f) {
-        return false;
-    }
-    
-    // Verificar límite por frame
-    if (rate_limiter.hits_this_frame >= rate_limiter.max_per_frame) {
-        return false;
-    }
-    
+bool ofApp::canEmitHit(const HitEvent& event) {
+    bool is_border = event.surface >= 0;
+    RateLimiter& bucket = is_border ? rate_limiter_border : rate_limiter_pp;
+    if (bucket.tokens < 1.0f) return false;
+    if (rate_limiter.hits_this_frame >= rate_limiter.max_per_frame) return false;
     return true;
 }
 
 //--------------------------------------------------------------
-void ofApp::consumeToken() {
-    rate_limiter.tokens -= 1.0f;
+void ofApp::consumeToken(const HitEvent& event) {
+    // Called only when event is accepted (validated). 1 token per event.
+    bool is_border = event.surface >= 0;
+    RateLimiter& bucket = is_border ? rate_limiter_border : rate_limiter_pp;
+    bucket.tokens -= 1.0f;
     rate_limiter.hits_this_frame++;
 }
 
 //--------------------------------------------------------------
 void ofApp::processPendingHits() {
     for (const auto& event : pending_hits) {
-        if (canEmitHit()) {
-            // Evento válido, agregar a validated_hits
+        if (canEmitHit(event)) {
             validated_hits.push_back(event);
-            consumeToken();
+            hits_validated++;
+            validated_this_frame++;
+            consumeToken(event);
             hits_this_second++;
         } else {
-            // Evento descartado por rate limiting
             hits_discarded_rate++;
+            dropped_rate_this_frame++;
         }
     }
 }
@@ -954,38 +1115,49 @@ void ofApp::processPendingHits() {
 void ofApp::drawDebugOverlay() {
     ofSetColor(255, 255, 255);
     stringstream ss;
-    ss << "FPS: " << ofGetFrameRate() << endl;
+    ss << "FPS: " << ofGetFrameRate() << " (target <=33ms)" << endl;
+    ss << "update_total_ms: " << update_total_ms << endl;
+    ss << "p2p_collision_ms: " << p2p_collision_ms << endl;
+    ss << "plate_force_ms: " << plate_force_ms << endl;
+    ss << "draw_ms: " << draw_ms << endl;
+    ss << "narrow_phase_pairs_checked: " << narrow_phase_pairs_checked << endl;
+    ss << "collisions_resolved: " << collisions_resolved << endl;
+    ss << "osc_msgs_sent_per_sec: " << hits_per_second << " (per_sec)" << endl;
+    ss << "osc_msgs_dropped_by_rate_limiter: " << hits_discarded_rate << " (per_sec)" << endl;
+    ss << "discarded_by_budget: " << discarded_by_budget_per_sec << " (per_sec) this_frame: " << discarded_by_budget_this_frame << endl;
+    ss << "sent_q0: " << sent_q0 << " q1: " << sent_q1 << " q2: " << sent_q2 << " q3: " << sent_q3 << " (per_sec)" << endl;
+    ss << "discard_budget q0: " << discarded_by_budget_q0 << " q1: " << discarded_by_budget_q1 << " q2: " << discarded_by_budget_q2 << " q3: " << discarded_by_budget_q3 << endl;
+    ss << "this_frame: validated " << validated_this_frame << " sent " << sent_this_frame << " dropped " << dropped_rate_this_frame << endl;
+    ss << "---" << endl;
     ss << "Particles (total): " << particles.size() << endl;
-    ss << "Particles (rendered): " << particles_rendered_this_frame << " / " << particles.size() << endl;
-    ss << "k_home: " << k_home << endl;
-    ss << "k_drag: " << k_drag << endl;
-    ss << "k_gesture: " << k_gesture << endl;
+    ss << "Particles (rendered): " << particles_rendered_this_frame << endl;
+    ss << "k_home: " << k_home << " k_drag: " << k_drag << " k_gesture: " << k_gesture << endl;
     ss << "Mouse vel: " << mouse.vel.length() << " px/s" << endl;
-    ss << "---" << endl;
-    ss << "Hits/sec: " << hits_per_second << endl;
-    ss << "Discarded (rate): " << hits_discarded_rate << endl;
     ss << "Discarded (cooldown): " << hits_discarded_cooldown << endl;
-    ss << "Tokens: " << rate_limiter.tokens << endl;
-    ss << "Pending: " << pending_hits.size() << endl;
-    ss << "Validated: " << validated_hits.size() << endl;
-    ss << "---" << endl;
-    ss << "OSC: " << (oscEnabled ? "ON" : "OFF") << endl;
-    if (oscEnabled) {
-        ss << "OSC: " << oscHost << ":" << oscPort << endl;
-    }
-    
-    // Dibujar en la parte inferior izquierda para no superponerse con la GUI
-    // La GUI típicamente está en la esquina superior derecha
+    ss << "candidate_border: " << hits_candidate_border << " candidate_p2p: " << hits_candidate_p2p << endl;
+    ss << "added_pending: " << hits_added_pending << " validated: " << hits_validated << " sent_osc: " << hits_sent_osc << " (per_sec)" << endl;
+    ss << "Discarded (low_energy): " << hits_discarded_low_energy << endl;
+    ss << "Tokens border: " << rate_limiter_border.tokens << " pp: " << rate_limiter_pp.tokens << endl;
+    ss << "frame cap: " << rate_limiter.hits_this_frame << "/" << rate_limiter.max_per_frame << endl;
+    ss << "OSC: " << (oscEnabled ? "ON" : "OFF");
+    if (oscEnabled) ss << " " << oscHost << ":" << oscPort;
+
     float x = 20.0f;
-    float lineHeight = 15.0f; // Altura aproximada de cada línea
-    int lineCount = 15; // Número de líneas en el overlay (actualizado con OSC)
+    float lineHeight = 14.0f;
+    int lineCount = 26;
     float y = ofGetHeight() - (lineCount * lineHeight) - 20.0f;
-    
-    // Asegurar que no se salga de la pantalla
-    if (y < 20.0f) {
-        y = 20.0f;
-    }
-    
+    if (y < 20.0f) y = 20.0f;
+
+    // Fase 5: fondo semi-opaco para legibilidad (ancho por línea más larga × ~8px, alto por lineCount)
+    const float padding = 7.0f;
+    const int approxCharWidth = 8;
+    const int maxLineChars = 58;
+    float boxW = (float)(maxLineChars * approxCharWidth);
+    float boxH = lineCount * lineHeight + 2.0f * padding;
+    ofSetColor(0, 0, 0, 180);
+    ofDrawRectangle(x - padding, y - padding, boxW, boxH);
+
+    ofSetColor(255, 255, 255);
     ofDrawBitmapString(ss.str(), x, y);
 }
 
@@ -1071,16 +1243,17 @@ void ofApp::mouseScrolled(int x, int y, float scrollX, float scrollY){
 
 //--------------------------------------------------------------
 void ofApp::mouseEntered(int x, int y){
-
+    (void)x; (void)y; // Handler vacío (ofBaseApp); no se usa.
 }
 
 //--------------------------------------------------------------
 void ofApp::mouseExited(int x, int y){
-
+    (void)x; (void)y; // Handler vacío (ofBaseApp); no se usa.
 }
 
 //--------------------------------------------------------------
 void ofApp::windowResized(int w, int h){
+    plateDirty = true;
     // Recalcular posiciones home cuando cambia el tamaño de ventana
     if (particles.size() > 0) {
         initializeParticles(particles.size());
@@ -1089,12 +1262,12 @@ void ofApp::windowResized(int w, int h){
 
 //--------------------------------------------------------------
 void ofApp::gotMessage(ofMessage msg){
-
+    (void)msg; // Handler vacío (ofBaseApp); no se usa.
 }
 
 //--------------------------------------------------------------
-void ofApp::dragEvent(ofDragInfo dragInfo){ 
-
+void ofApp::dragEvent(ofDragInfo dragInfo){
+    (void)dragInfo; // Handler vacío (ofBaseApp); no se usa.
 }
 
 //--------------------------------------------------------------
@@ -1217,3 +1390,4 @@ float ofApp::calculatePresence() {
     // En el futuro, con MediaPipe, esto sería confianza del tracking
     return mouse.active ? 1.0f : 0.0f;
 }
+

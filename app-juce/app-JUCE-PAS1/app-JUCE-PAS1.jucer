@@ -17,6 +17,9 @@
       <FILE id="plateSynthH" name="PlateSynth.h" compile="0" resource="0" file="Source/PlateSynth.h"/>
       <FILE id="plateSynthCpp" name="PlateSynth.cpp" compile="1" resource="0" file="Source/PlateSynth.cpp"/>
       <FILE id="synthParametersH" name="SynthParameters.h" compile="0" resource="0" file="Source/SynthParameters.h"/>
+      <FILE id="fusedHitSnapshotH" name="FusedHitSnapshot.h" compile="0" resource="0" file="Source/FusedHitSnapshot.h"/>
+      <FILE id="hitAggregatorH" name="HitAggregator.h" compile="0" resource="0" file="Source/HitAggregator.h"/>
+      <FILE id="hitAggregatorCpp" name="HitAggregator.cpp" compile="1" resource="0" file="Source/HitAggregator.cpp"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -42,21 +45,6 @@
         <CONFIGURATION isDebug="1" name="Debug" targetName="app-JUCE-PAS1"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="app-JUCE-PAS1"/>
       </CONFIGURATIONS>
-      <MODULEPATHS>
-        <MODULEPATH id="juce_audio_basics" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_devices" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_formats" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_processors" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_utils" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_core" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_data_structures" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_events" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_graphics" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_gui_basics" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_gui_extra" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_processors_headless" path="../../../../../../../../../Applications/JUCE/modules"/>
-        <MODULEPATH id="juce_osc" path="../../../../../../../../../Applications/JUCE/modules"/>
-      </MODULEPATHS>
     </XCODE_MAC>
   </EXPORTFORMATS>
 </JUCERPROJECT>

@@ -1,16 +1,18 @@
 #include "MainComponent.h"
+#include <atomic>
 #include <random>
 
 //==============================================================================
 MainComponent::MainComponent()
     : pitchRandomGen(std::random_device{}()), pitchRandomDist(0.0f, 1.0f)
 {
-    // Configurar sliders y labels (solo controles que funcionan)
-    setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 12.0, 8.0, 1.0); // Rango 4-12 para estabilidad RT
-    setupSlider(metalnessSlider, metalnessLabel, "Pitch", 0.0, 1.0, 0.5);
+    // Configurar sliders y labels
+    setupSlider(voicesSlider, voicesLabel, "Voices", 4.0, 24.0, 8.0, 1.0); // M3: 4-24 para mayor polyfonía perceptual
+    setupSlider(metalnessSlider, metalnessLabel, "Metalness", 0.0, 1.0, 0.5); // Dispersión de modos inarmónicos
+    setupSlider(brightnessSlider, brightnessLabel, "Brightness", 0.0, 1.0, 0.5); // Tilt espectral (0=oscuro, 1=brillante)
+    setupSlider(dampingSlider, dampingLabel, "Damping", 0.0, 1.0, 0.5); // Tiempo de decaimiento (0=corto, 1=largo)
     setupSlider(subOscMixSlider, subOscMixLabel, "SubOsc Mix", 0.0, 1.0, 0.0);
     setupSlider(pitchRangeSlider, pitchRangeLabel, "Pitch Range", 0.0, 1.0, 0.5); // Rango de variación de pitch random (0=sin variación, 1=máxima variación)
-    setupSlider(plateVolumeSlider, plateVolumeLabel, "Plate Volume", 0.0, 1.0, 1.0);
     
     // Waveform selector
     waveformComboBox.addItem("Noise", 1);
@@ -29,15 +31,53 @@ MainComponent::MainComponent()
     waveformLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(&waveformLabel);
     
-    // Limiter toggle
-    limiterToggle.setButtonText("Limiter");
+    // Clipper toggle (soft clip on output)
+    limiterToggle.setButtonText("Clipper");
     limiterToggle.setToggleState(true, juce::dontSendNotification);
     limiterToggle.addListener(this);
     addAndMakeVisible(&limiterToggle);
     
-    limiterLabel.setText("Limiter", juce::dontSendNotification);
+    limiterLabel.setText("Clipper", juce::dontSendNotification);
     limiterLabel.attachToComponent(&limiterToggle, false);
     addAndMakeVisible(&limiterLabel);
+
+    // M4 toggles (Density Comp, Center Bias) - visibility in resized when M4
+    densityCompToggle.setButtonText("Density Comp");
+    densityCompToggle.setToggleState(enableDensityCompensation, juce::dontSendNotification);
+    densityCompToggle.addListener(this);
+    addAndMakeVisible(&densityCompToggle);
+    centerBiasToggle.setButtonText("Center Bias");
+    centerBiasToggle.setToggleState(enableCenterBias, juce::dontSendNotification);
+    centerBiasToggle.addListener(this);
+    addAndMakeVisible(&centerBiasToggle);
+    
+    // M5: Preset selector
+    presetComboBox.addItem("Dry Click", 1);
+    presetComboBox.addItem("Bright Spray", 2);
+    presetComboBox.addItem("Soft Foam", 3);
+    presetComboBox.addItem("Heavy Border", 4);
+    presetComboBox.addItem("Center Focus", 5);
+    presetComboBox.addItem("Wide Dark", 6);
+    presetComboBox.addItem("Crisp Short", 7);
+    presetComboBox.addItem("Default (M4)", 8);
+    presetComboBox.setSelectedId(8, juce::dontSendNotification); // Default (M4)
+    presetComboBox.addListener(this);
+    addAndMakeVisible(&presetComboBox);
+    presetLabel.setText("Preset", juce::dontSendNotification);
+    presetLabel.attachToComponent(&presetComboBox, false);
+    presetLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(&presetLabel);
+    
+    resetPresetButton.setButtonText("Reset");
+    resetPresetButton.addListener(this);
+    addAndMakeVisible(&resetPresetButton);
+    
+    demoModeToggle.setButtonText("Demo Mode");
+    demoModeToggle.setToggleState(demoMode_, juce::dontSendNotification);
+    demoModeToggle.addListener(this);
+    addAndMakeVisible(&demoModeToggle);
+    
+    applyPreset(7); // Default (M4) initial state
     
     // Test trigger button
     testTriggerButton.setButtonText("Test Trigger");
@@ -52,6 +92,22 @@ MainComponent::MainComponent()
     activeVoicesLabel.setText("Active Voices: 0", juce::dontSendNotification);
     activeVoicesLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(&activeVoicesLabel);
+    
+    hitsCoverageLabel.setText("Hit Coverage: 100%", juce::dontSendNotification);
+    hitsCoverageLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&hitsCoverageLabel);
+    
+    hitsStatsLabel.setText("Hits: 0/0 (0 discarded)", juce::dontSendNotification);
+    hitsStatsLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&hitsStatsLabel);
+    
+    m2FusionStatsLabel.setText("M2: raw 0 | fused 0/0 enq, 0 drop", juce::dontSendNotification);
+    m2FusionStatsLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&m2FusionStatsLabel);
+    
+    clipperHitCountLabel.setText("Clip: 0 blocks/s", juce::dontSendNotification);
+    clipperHitCountLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(&clipperHitCountLabel);
     
     // OSC Receiver setup
     oscStatusLabel.setText("OSC: Disconnected", juce::dontSendNotification);
@@ -79,10 +135,18 @@ MainComponent::MainComponent()
     
     lastOscActivityTimestamp = juce::Time::currentTimeMillis();
     lastOscCountUpdateTime = juce::Time::currentTimeMillis();
+    lastClipUpdateTime = juce::Time::currentTimeMillis();
     
-    // Make sure you set the size of the component after
-    // you add any child components.
-    setSize (800, 600);
+    aggregatorTimer.owner = this;
+    if (enableFusionAggregation)
+        aggregatorTimer.startTimer(HitAggregator::WINDOW_MS);
+    
+    // M4: Sincronizar toggles al engine (A/B: cambiar enableM4Character etc. y recompilar o exponer en UI)
+    synthesisEngine.setEnableM4Character(enableM4Character);
+    synthesisEngine.setEnableDensityCompensation(enableDensityCompensation);
+
+    // Tamaño por defecto: ancho reducido (columna derecha = Clipper + debug en vertical)
+    setSize (540, 600);
         
     // Iniciar timer para actualizar indicadores
     startTimer(50); // Actualizar cada 50ms
@@ -156,12 +220,23 @@ void MainComponent::paint (juce::Graphics& g)
     // (Our component is opaque, so we must completely fill the background with a solid colour)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
 
-    // Título
+    auto topArea = getLocalBounds().removeFromTop(50);
     g.setColour (juce::Colours::white);
     g.setFont (24.0f);
-    g.drawText ("PAS-1-SYNTH", 
-                getLocalBounds().removeFromTop(40).reduced(10),
-                juce::Justification::centred, false);
+    juce::String title;
+    if (enableFusionAggregation && enableM4Character)
+        title = "PAS-1 (M4 Character)";
+    else if (enableFusionAggregation)
+        title = "PAS-1 (M3 Perceptual)";
+    else
+        title = "PAS-1-SYNTH";
+    g.drawText (title, topArea.removeFromTop(28).reduced(10), juce::Justification::centred, false);
+    if (enableFusionAggregation)
+    {
+        g.setFont (12.0f);
+        g.setColour (juce::Colours::lightgrey);
+        g.drawText (enableM4Character ? "Perceptual Mode (M4)" : "Perceptual Mode", topArea.reduced(10), juce::Justification::centred, false);
+    }
 }
 
 void MainComponent::resized()
@@ -169,58 +244,123 @@ void MainComponent::resized()
     auto area = getLocalBounds();
     area.removeFromTop(50); // Espacio para título
     
-    const int sliderHeight = 60;
-    const int margin = 10;
-    const int labelWidth = 100;
-    const int sliderWidth = 200;
+    const int sliderHeight = 56;
+    const int margin = 8;
+    const int labelWidth = 92;
     
-    // Primera columna de sliders
-    auto leftColumn = area.removeFromLeft(350);
+    // Columna derecha: Clipper + Test + todos los textos de debug alineados verticalmente (ancho fijo)
+    const int rightColumnWidth = 220;
+    auto rightColumn = area.removeFromRight(rightColumnWidth);
     
-    // Layout mejorado: label a la izquierda, slider a la derecha
+    const int debugRowHeight = 22;
+    // M5: Preset dropdown and Reset at top of right column
+    auto presetRow = rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2);
+    presetLabel.setBounds(presetRow.removeFromLeft(labelWidth));
+    presetComboBox.setBounds(presetRow);
+    resetPresetButton.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    demoModeToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    rightColumn.removeFromTop(2); // small gap
+    limiterToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    bool m4Mode = enableFusionAggregation && enableM4Character;
+    if (m4Mode)
+    {
+        densityCompToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+        centerBiasToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    }
+    testTriggerButton.setBounds(rightColumn.removeFromTop(debugRowHeight + 4).reduced(margin, 2));
+    rightColumn.removeFromTop(4); // separación
+    outputLevelLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    activeVoicesLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    hitsCoverageLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    hitsStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    m2FusionStatsLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    clipperHitCountLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    oscStatusLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    oscMessageCountLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    
+    // Columna izquierda: sliders (ocupa el resto del ancho)
+    auto leftColumn = area.reduced(0, 0);
     auto voicesArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     voicesLabel.setBounds(voicesArea.removeFromLeft(labelWidth));
     voicesSlider.setBounds(voicesArea);
+
+    if (m4Mode)
+    {
+        // M4: solo Tone (brightness) y Decay (damping); Metalness oculto
+        brightnessLabel.setText("Tone", juce::dontSendNotification);
+        dampingLabel.setText("Decay", juce::dontSendNotification);
+        auto toneArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        brightnessLabel.setBounds(toneArea.removeFromLeft(labelWidth));
+        brightnessSlider.setBounds(toneArea);
+        auto decayArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        dampingLabel.setBounds(decayArea.removeFromLeft(labelWidth));
+        dampingSlider.setBounds(decayArea);
+        metalnessLabel.setVisible(false);
+        metalnessSlider.setVisible(false);
+        metalnessLabel.setBounds(0, 0, 0, 0);
+        metalnessSlider.setBounds(0, 0, 0, 0);
+        densityCompToggle.setVisible(true);
+        centerBiasToggle.setVisible(true);
+    }
+    else
+    {
+        brightnessLabel.setText("Brightness", juce::dontSendNotification);
+        dampingLabel.setText("Damping", juce::dontSendNotification);
+        auto metalnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
+        metalnessSlider.setBounds(metalnessArea);
+        metalnessLabel.setVisible(true);
+        metalnessSlider.setVisible(true);
+        auto brightnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        brightnessLabel.setBounds(brightnessArea.removeFromLeft(labelWidth));
+        brightnessSlider.setBounds(brightnessArea);
+        auto dampingArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
+        dampingSlider.setBounds(dampingArea);
+        densityCompToggle.setVisible(false);
+        centerBiasToggle.setVisible(false);
+        densityCompToggle.setBounds(0, 0, 0, 0);
+        centerBiasToggle.setBounds(0, 0, 0, 0);
+    }
     
-    auto metalnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
-    metalnessSlider.setBounds(metalnessArea);
+    // M3: Waveform, SubOsc Mix, Pitch Range solo visibles sin fusión (evitar controles "muertos")
+    bool showLegacyControls = !enableFusionAggregation;
+    if (showLegacyControls)
+    {
+        auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
+        waveformComboBox.setBounds(waveformArea);
+        auto subOscArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
+        subOscMixSlider.setBounds(subOscArea);
+        auto pitchRangeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        pitchRangeLabel.setBounds(pitchRangeArea.removeFromLeft(labelWidth));
+        pitchRangeSlider.setBounds(pitchRangeArea);
+    }
+    waveformLabel.setVisible(showLegacyControls);
+    waveformComboBox.setVisible(showLegacyControls);
+    subOscMixLabel.setVisible(showLegacyControls);
+    subOscMixSlider.setVisible(showLegacyControls);
+    pitchRangeLabel.setVisible(showLegacyControls);
+    pitchRangeSlider.setVisible(showLegacyControls);
+    if (!showLegacyControls)
+    {
+        juce::Rectangle<int> empty(0, 0, 0, 0);
+        waveformLabel.setBounds(empty);
+        waveformComboBox.setBounds(empty);
+        subOscMixLabel.setBounds(empty);
+        subOscMixSlider.setBounds(empty);
+        pitchRangeLabel.setBounds(empty);
+        pitchRangeSlider.setBounds(empty);
+    }
     
-    // Waveform combo box
-    auto waveformArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    waveformLabel.setBounds(waveformArea.removeFromLeft(labelWidth));
-    waveformComboBox.setBounds(waveformArea);
-    
-    // SubOsc Mix slider
-    auto subOscArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    subOscMixLabel.setBounds(subOscArea.removeFromLeft(labelWidth));
-    subOscMixSlider.setBounds(subOscArea);
-    
-    // Pitch Range slider
-    auto pitchRangeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    pitchRangeLabel.setBounds(pitchRangeArea.removeFromLeft(labelWidth));
-    pitchRangeSlider.setBounds(pitchRangeArea);
-    
-    // Plate Volume slider
-    auto plateVolumeArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    plateVolumeLabel.setBounds(plateVolumeArea.removeFromLeft(labelWidth));
-    plateVolumeSlider.setBounds(plateVolumeArea);
-    
-    // Segunda columna de controles
-    auto rightColumn = area.removeFromRight(350);
-    
-    // Limiter toggle
-    limiterToggle.setBounds(rightColumn.removeFromTop(30).reduced(margin));
-    
-    // Botón de test trigger
-    testTriggerButton.setBounds(rightColumn.removeFromTop(40).reduced(margin));
-    
-    // Indicadores en la parte inferior
-    auto bottomArea = area;
-    outputLevelLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    activeVoicesLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    oscStatusLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
-    oscMessageCountLabel.setBounds(bottomArea.removeFromTop(30).reduced(margin));
+    // M5: Demo mode — hide advanced counters and optional toggles
+    const bool showAdvanced = !demoMode_;
+    m2FusionStatsLabel.setVisible(showAdvanced);
+    clipperHitCountLabel.setVisible(showAdvanced);
+    hitsStatsLabel.setVisible(showAdvanced);
+    densityCompToggle.setVisible(m4Mode && showAdvanced);
+    centerBiasToggle.setVisible(m4Mode && showAdvanced);
 }
 
 //==============================================================================
@@ -234,6 +374,14 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     {
         synthesisEngine.setMetalness((float)metalnessSlider.getValue());
     }
+    else if (slider == &brightnessSlider)
+    {
+        synthesisEngine.setBrightness((float)brightnessSlider.getValue());
+    }
+    else if (slider == &dampingSlider)
+    {
+        synthesisEngine.setDamping((float)dampingSlider.getValue());
+    }
     else if (slider == &subOscMixSlider)
     {
         synthesisEngine.setSubOscMix((float)subOscMixSlider.getValue());
@@ -241,39 +389,6 @@ void MainComponent::sliderValueChanged (juce::Slider* slider)
     else if (slider == &pitchRangeSlider)
     {
         synthesisEngine.setPitchRange((float)pitchRangeSlider.getValue());
-    }
-    else if (slider == &plateVolumeSlider)
-    {
-        // Mapeo exponencial muy suave: slider 0.01 → volumen 0.1 (10% en lugar de 50%)
-        // slider 0.0 → volumen 0.0, slider 1.0 → volumen 1.0
-        // Mapeo ajustado para balancear con audio de partículas (plate suena más fuerte)
-        float sliderValue = (float)plateVolumeSlider.getValue();
-        float volume;
-        
-        if (sliderValue <= 0.0f)
-        {
-            volume = 0.0f;
-        }
-        else if (sliderValue <= 0.01f)
-        {
-            // Mapeo exponencial muy suave de 0.0-0.01 a 0.0-0.05 (5% máximo)
-            // Usar exponente alto para curva muy gradual al inicio
-            float normalized = sliderValue / 0.01f; // 0.0 a 1.0
-            // Curva muy suave: exponente 0.8 hace que crezca muy gradualmente
-            // Ejemplo: sliderValue=0.003 → normalized=0.3 → pow(0.3, 0.8)≈0.38 → volume≈0.019 (1.9%)
-            float curve = std::pow(normalized, 0.8f); // Curva muy suave
-            volume = curve * 0.05f; // Máximo 5% en sliderValue = 0.01 (reducido para mejor balance)
-        }
-        else
-        {
-            // Mapeo exponencial de 0.01-1.0 a 0.05-1.0 (más gradual que lineal)
-            float normalized = (sliderValue - 0.01f) / 0.99f; // 0.0 a 1.0
-            // Usar curva exponencial suave para el resto del rango también
-            float curve = std::pow(normalized, 0.7f); // Curva suave
-            volume = 0.05f + curve * 0.95f; // De 0.05 a 1.0
-        }
-        
-        synthesisEngine.setPlateVolume(volume);
     }
 }
 
@@ -284,9 +399,28 @@ void MainComponent::buttonClicked (juce::Button* button)
     {
         synthesisEngine.triggerTestVoice();
     }
+    else if (button == &resetPresetButton)
+    {
+        presetComboBox.setSelectedId(8, juce::dontSendNotification); // Default (M4)
+        applyPreset(7);
+    }
+    else if (button == &demoModeToggle)
+    {
+        demoMode_ = demoModeToggle.getToggleState();
+        resized();
+    }
     else if (button == &limiterToggle)
     {
         synthesisEngine.setLimiterEnabled(limiterToggle.getToggleState());
+    }
+    else if (button == &densityCompToggle)
+    {
+        enableDensityCompensation = densityCompToggle.getToggleState();
+        synthesisEngine.setEnableDensityCompensation(enableDensityCompensation);
+    }
+    else if (button == &centerBiasToggle)
+    {
+        enableCenterBias = centerBiasToggle.getToggleState();
     }
 }
 
@@ -298,6 +432,12 @@ void MainComponent::comboBoxChanged (juce::ComboBox* comboBox)
         int selectedId = waveformComboBox.getSelectedId();
         ModalVoice::ExcitationWaveform waveform = static_cast<ModalVoice::ExcitationWaveform>(selectedId - 1);
         synthesisEngine.setWaveform(waveform);
+    }
+    else if (comboBox == &presetComboBox)
+    {
+        int id = presetComboBox.getSelectedId();
+        if (id >= 1 && id <= 8)
+            applyPreset(id - 1);
     }
 }
 
@@ -316,6 +456,36 @@ void MainComponent::timerCallback()
     activeVoicesLabel.setText("Active Voices: " + juce::String(activeVoices), 
                              juce::dontSendNotification);
     
+    // Actualizar estadísticas de hits
+    int hitsReceived = synthesisEngine.getHitsReceived();
+    int hitsTriggered = synthesisEngine.getHitsTriggered();
+    int hitsDiscarded = synthesisEngine.getHitsDiscarded();
+    float coverageRatio = synthesisEngine.getHitCoverageRatio();
+    
+    hitsStatsLabel.setText("Hits: " + juce::String(hitsTriggered) + "/" + 
+                          juce::String(hitsReceived) + " (" + 
+                          juce::String(hitsDiscarded) + " discarded)", 
+                          juce::dontSendNotification);
+    
+    // Mostrar ratio de cobertura con color según umbral
+    float coveragePercent = coverageRatio * 100.0f;
+    juce::String coverageText = "Hit Coverage: " + juce::String(coveragePercent, 1) + "%";
+    hitsCoverageLabel.setText(coverageText, juce::dontSendNotification);
+    
+    // Cambiar color según umbral (warning si < 90%)
+    if (coverageRatio < 0.9f && hitsReceived > 10) // Solo mostrar warning si hay suficientes hits
+    {
+        hitsCoverageLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
+    }
+    else if (coverageRatio < 0.7f && hitsReceived > 10)
+    {
+        hitsCoverageLabel.setColour(juce::Label::textColourId, juce::Colours::red);
+    }
+    else
+    {
+        hitsCoverageLabel.setColour(juce::Label::textColourId, juce::Colours::green);
+    }
+    
     // Update OSC indicators (messages are now processed via listener callback)
     juce::int64 currentTime = juce::Time::currentTimeMillis();
     if (currentTime - lastOscCountUpdateTime >= 1000) // Update every second
@@ -328,6 +498,32 @@ void MainComponent::timerCallback()
     int messagesPerSec = oscMessagesPerSecond.load();
     oscMessageCountLabel.setText("OSC Messages: " + juce::String(messagesPerSec) + "/s", 
                                 juce::dontSendNotification);
+    
+    // M2 fusion metrics: raw, fused produced/enqueued/dropped, coverage, queue loss
+    int rawHits = synthesisEngine.getHitsReceived();
+    int produced = fusedProduced.load(std::memory_order_relaxed);
+    int enqueued = synthesisEngine.getFusedHitsEnqueued();
+    int dropped = synthesisEngine.getFusedHitsDiscardedQueue();
+    float cov = (rawHits > 0 && produced > 0) ? (float)enqueued / (float)rawHits : 0.0f;
+    float qloss = (produced > 0) ? (float)dropped / (float)produced : 0.0f;
+    m2FusionStatsLabel.setText("M2: raw " + juce::String(rawHits) + " | fused " + juce::String(produced) +
+                               "/" + juce::String(enqueued) + " enq, " + juce::String(dropped) + " drop | cov " +
+                               juce::String(cov * 100.0f, 1) + "% qloss " + juce::String(qloss * 100.0f, 1) + "%",
+                               juce::dontSendNotification);
+    
+    // M3: clip rate = blocks/s (interpretable); recompute every 500 ms
+    juce::int64 now = juce::Time::currentTimeMillis();
+    if (now - lastClipUpdateTime >= 500)
+    {
+        int cur = synthesisEngine.getBlocksClippedCount();
+        int deltaBlocks = cur - lastBlocksClippedCount;
+        double deltaSec = (now - lastClipUpdateTime) * 0.001;
+        if (deltaSec <= 0) deltaSec = 0.5;
+        lastBlocksClippedCount = cur;
+        lastClipUpdateTime = now;
+        double blocksPerSec = deltaBlocks / deltaSec;
+        clipperHitCountLabel.setText("Clip: " + juce::String(blocksPerSec, 1) + " blocks/s", juce::dontSendNotification);
+    }
     
     // Update OSC status color based on recent activity
     juce::int64 timeSinceLastMessage = currentTime - lastOscActivityTimestamp;
@@ -377,11 +573,66 @@ void MainComponent::oscMessageReceived(const juce::OSCMessage& message)
     {
         updateOSCState(message);
     }
-    else if (address == "/plate")
+    else if (address == "/plate" && enablePlateSynth)
     {
         mapOSCPlateToEvent(message);
     }
     // Silently ignore unknown addresses (no crash, no log spam)
+}
+
+//==============================================================================
+void AggregatorTimer::timerCallback()
+{
+    if (owner)
+        owner->flushAggregatorWindow();
+}
+
+//==============================================================================
+void MainComponent::applyPreset(int presetIndex)
+{
+    struct Preset { int voices; float tone; float decay; bool densityComp; bool centerBias; };
+    static const Preset presets[] = {
+        { 8,  0.25f, 0.25f, true,  true  },  // 0 Dry Click
+        { 12, 0.85f, 0.45f, true,  true  },  // 1 Bright Spray
+        { 10, 0.45f, 0.75f, true,  true  },  // 2 Soft Foam
+        { 16, 0.35f, 0.85f, true,  true  },  // 3 Heavy Border
+        { 8,  0.55f, 0.55f, true,  true  },  // 4 Center Focus
+        { 14, 0.20f, 0.65f, false, false },  // 5 Wide Dark
+        { 10, 0.70f, 0.30f, true,  false },  // 6 Crisp Short
+        { 8,  0.50f, 0.50f, true,  true  },  // 7 Default (M4)
+    };
+    if (presetIndex < 0 || presetIndex >= 8)
+        return;
+    const Preset& p = presets[presetIndex];
+    voicesSlider.setValue(p.voices, juce::dontSendNotification);
+    brightnessSlider.setValue(p.tone, juce::dontSendNotification);
+    dampingSlider.setValue(p.decay, juce::dontSendNotification);
+    synthesisEngine.setMaxVoices(p.voices);
+    synthesisEngine.setBrightness(p.tone);
+    synthesisEngine.setDamping(p.decay);
+    enableDensityCompensation = p.densityComp;
+    enableCenterBias = p.centerBias;
+    densityCompToggle.setToggleState(p.densityComp, juce::dontSendNotification);
+    centerBiasToggle.setToggleState(p.centerBias, juce::dontSendNotification);
+    synthesisEngine.setEnableDensityCompensation(p.densityComp);
+    hitAggregator.setEnableCenterBias(p.centerBias);
+}
+
+//==============================================================================
+void MainComponent::flushAggregatorWindow()
+{
+    hitAggregator.setEnableCenterBias(enableCenterBias);
+    FusedHitSnapshot snaps[HitAggregator::NUM_QUADRANTS];
+    int n = hitAggregator.closeWindow(snaps, HitAggregator::NUM_QUADRANTS);
+    fusedProduced.fetch_add(n, std::memory_order_relaxed);
+    float metalness = synthesisEngine.getMetalness();
+    float subOscMix = synthesisEngine.getSubOscMix();
+    for (int i = 0; i < n; i++)
+    {
+        snaps[i].metalness = metalness;
+        snaps[i].subOscMix = subOscMix;
+        synthesisEngine.enqueueFusedSnapshot(snaps[i]);
+    }
 }
 
 //==============================================================================
@@ -390,79 +641,54 @@ void MainComponent::mapOSCHitToEvent(const juce::OSCMessage& message)
     // Validate message format: /hit id(int32) x(float) y(float) energy(float) surface(int32)
     if (message.size() != 5)
     {
-        // Malformed message - silently discard
         return;
     }
     
-    // Extract and validate arguments
     if (!message[0].isInt32() || !message[1].isFloat32() || !message[2].isFloat32() || 
         !message[3].isFloat32() || !message[4].isInt32())
     {
-        // Wrong argument types - silently discard
         return;
     }
     
-    // Extract values and clamp to valid ranges
     int id = message[0].getInt32();
     float x = juce::jlimit(0.0f, 1.0f, message[1].getFloat32());
     float y = juce::jlimit(0.0f, 1.0f, message[2].getFloat32());
     float energy = juce::jlimit(0.0f, 1.0f, message[3].getFloat32());
     int surface = message[4].getInt32();
     
-    // Map parameters according to "Coin Cascade" design
+    if (enableFusionAggregation)
+    {
+        synthesisEngine.incrementHitsReceived();
+        hitAggregator.addHit(x, y, energy, surface);
+        (void)id;
+        return;
+    }
     
-    // Amplitude: amp = energy^1.5 (micro-collisions → very low but audible)
+    // Modo sin agregación: mapeo directo como antes
     float amplitude = std::pow(energy, 1.5f);
-    
-    // Brightness: lerp(0.3, 1.0, energy)
     float brightness = 0.3f + (energy * 0.7f);
-    
-    // Pan: pan = (x * 2.0) - 1.0 (-1 = left, +1 = right)
-    // Note: Pan will be applied in VoiceManager if stereo support is added
-    // For now, we'll store it but not use it (mono output)
-    float pan = (x * 2.0f) - 1.0f;
-    (void)pan; // Suppress unused variable warning
-    
-    // Damping: lerp(0.2, 0.8, 1.0 - y)
-    // Upper screen → drier (lower damping), Lower screen → longer decay (higher damping)
     float damping = 0.2f + ((1.0f - y) * 0.6f);
-    
-    // Base frequency: Random dentro de rango controlado por slider
-    // Frecuencia base: 300 Hz (centro del rango metálico)
-    // Rango de variación controlado por pitchRange slider (0.0 = sin variación, 1.0 = ±200 Hz)
     float pitchRange = synthesisEngine.getPitchRange();
-    float centerFreq = 300.0f; // Frecuencia central (Hz)
-    float maxVariation = 200.0f; // Variación máxima (±200 Hz)
-    
-    // Generar random pitch: centerFreq ± (pitchRange * maxVariation * random)
-    float randomValue = pitchRandomDist(pitchRandomGen); // 0.0 a 1.0
-    float variation = (randomValue * 2.0f - 1.0f) * pitchRange * maxVariation; // -maxVariation a +maxVariation
-    float baseFreq = centerFreq + variation;
-    baseFreq = juce::jlimit(100.0f, 800.0f, baseFreq); // Clamp a rango seguro
-    
-    // Metalness: usar valor global (unificado para todos los eventos)
-    // No modificar por surface para que bordes y colisiones suenen igual
+    float centerFreq = 300.0f;
+    float maxVariation = 200.0f;
+    float randomValue = pitchRandomDist(pitchRandomGen);
+    float variation = (randomValue * 2.0f - 1.0f) * pitchRange * maxVariation;
+    float baseFreq = juce::jlimit(100.0f, 800.0f, centerFreq + variation);
     float metalness = synthesisEngine.getMetalness();
     
-    // Mapeo adaptativo de energy → waveform (Fase 4: Excitación Adaptativa)
-    // Alta energía → formas agresivas, baja energía → formas suaves
     ModalVoice::ExcitationWaveform waveform;
     if (energy > 0.7f)
-        waveform = ModalVoice::ExcitationWaveform::Square; // Alta energía → agresivo
+        waveform = ModalVoice::ExcitationWaveform::Square;
     else if (energy > 0.4f)
-        waveform = ModalVoice::ExcitationWaveform::Saw; // Media-alta → brillante
+        waveform = ModalVoice::ExcitationWaveform::Saw;
     else if (energy > 0.2f)
-        waveform = ModalVoice::ExcitationWaveform::Noise; // Media-baja → ruido
+        waveform = ModalVoice::ExcitationWaveform::Noise;
     else
-        waveform = ModalVoice::ExcitationWaveform::Sine; // Baja energía → suave
+        waveform = ModalVoice::ExcitationWaveform::Sine;
     
-    // Obtener subOscMix global del engine
     float subOscMix = synthesisEngine.getSubOscMix();
-    
-    // Trigger voice through RT-safe queue
     synthesisEngine.triggerVoiceFromOSC(baseFreq, amplitude, damping, brightness, metalness, waveform, subOscMix);
-    
-    (void)id; // Suppress unused variable warning (id is for future use)
+    (void)id;
 }
 
 //==============================================================================
@@ -520,3 +746,4 @@ void MainComponent::mapOSCPlateToEvent(const juce::OSCMessage& message)
     // Trigger plate synth through RT-safe method (to be implemented in SynthesisEngine)
     synthesisEngine.triggerPlateFromOSC(freq, amp, mode);
 }
+

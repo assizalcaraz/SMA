@@ -10,6 +10,8 @@ Este sistema permite generar sonido en tiempo real a partir del movimiento corpo
 
 **Documentación organizada:** Ver [`Docs/README.md`](Docs/README.md) para índice completo y rutas de aprendizaje.
 
+**Entregas ISTR y PAS1:** Para empaquetar los módulos Particles (ISTR) y app-juce (PAS1) sin dependencias de calibración, usar la rama `entrega-istr-pas1`. Ver [Estado actual — Rama de entrega](Docs/overview/ESTADO_ACTUAL.md#contenido-de-la-rama-de-entrega) para parches aplicados y uso.
+
 **Índice de documentación:** Ver [`Docs/index.md`](Docs/index.md) para mapeo completo de código a documentación.
 
 **Documentación del módulo Particles:**

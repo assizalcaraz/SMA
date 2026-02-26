@@ -1,9 +1,9 @@
 # Documentación del Sistema Modular Audiovisual
 
 **Versión**: v0.1  
-**Última actualización**: 2026-02-11
+**Última actualización**: 2026-02-24
 
-Este directorio contiene toda la documentación del proyecto, organizada en niveles de lectura claros y siguiendo la estructura del proyecto.
+Este directorio contiene toda la documentación del proyecto, organizada en niveles de lectura claros y siguiendo la estructura del proyecto. Para entregas formales ISTR (Particles) y PAS1 (app-juce) sin CALIB, ver [Estado actual — Rama de entrega](overview/ESTADO_ACTUAL.md#contenido-de-la-rama-de-entrega).
 
 ---
 
@@ -44,17 +44,7 @@ Documentación técnica de módulos y componentes del sistema.
 
 #### App B - JUCE
 
-- **[JUCE](JUCE/README.md)** — Módulo de síntesis en JUCE
-  - [`readme.md`](JUCE/readme.md) — Descripción general y arquitectura
-  - [`manual.md`](JUCE/manual.md) — Manual de usuario
-  - [`spec.md`](JUCE/spec.md) — Especificación técnica
-
-#### App C - MAAD-2-CALIB
-
-- **[CALIB](CALIB/README.md)** — Módulo de calibración y validación
-  - [`readme.md`](CALIB/readme.md) — Descripción general y arquitectura
-  - [`manual.md`](CALIB/manual.md) — Manual de usuario (comandos OSC, uso, análisis)
-  - [`spec.md`](CALIB/spec.md) — Especificación técnica detallada
+- **JUCE App** — Documentación del sintetizador (pendiente de implementación)
 
 ---
 
@@ -79,19 +69,15 @@ Guías específicas de procesos y mantenimiento.
 
 1. **[Especificación técnica](specs/spec.md)** — Entender arquitectura y diseño
 2. **[Documentación de módulos](Particles/)** — Entender implementación de código
-3. **[Documentación de JUCE](JUCE/README.md)** — Entender módulo de síntesis
-4. **[Documentación de CALIB](CALIB/README.md)** — Entender módulo de calibración y validación
-5. **[Contrato OSC](api-osc.md)** — Entender comunicación entre apps
-5. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver fases de desarrollo
+3. **[Contrato OSC](api-osc.md)** — Entender comunicación entre apps (pendiente)
+4. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver fases de desarrollo
 
 ### Para Contribuidores
 
 1. **[Estado actual](overview/ESTADO_ACTUAL.md)** — Ver qué está implementado
 2. **[Plan de implementación](specs/PLAN_IMPLEMENTACION.md)** — Ver qué falta implementar
 3. **[Documentación de módulos](Particles/)** — Entender estructura del código
-4. **[Documentación de JUCE](JUCE/README.md)** — Entender módulo de síntesis
-5. **[Documentación de CALIB](CALIB/README.md)** — Entender módulo de calibración
-6. **[Índice código → documentación](index.md)** — Mapeo de archivos a documentación
+4. **[Índice código → documentación](index.md)** — Mapeo de archivos a documentación
 
 ---
 
@@ -116,16 +102,6 @@ Docs/
 │   ├── readme.md
 │   ├── manual.md
 │   └── spec.md
-├── JUCE/                       # Nivel 3: Documentación de módulos
-│   ├── README.md
-│   ├── readme.md
-│   ├── manual.md
-│   └── spec.md
-├── CALIB/                      # Nivel 3: Documentación de módulos
-│   ├── README.md
-│   ├── readme.md
-│   ├── manual.md
-│   └── spec.md
 └── requisitos/                 # Requisitos de entrega
     └── Trabajo Final ISTR.md
 ```
@@ -141,8 +117,6 @@ Docs/
 - **Contrato OSC**: [api-osc.md](api-osc.md)
 - **Plan de desarrollo**: [specs/PLAN_IMPLEMENTACION.md](specs/PLAN_IMPLEMENTACION.md)
 - **Documentación de Particles**: [Particles/](Particles/)
-- **Documentación de JUCE**: [JUCE/](JUCE/)
-- **Documentación de CALIB**: [CALIB/](CALIB/)
 - **Estado del proyecto**: [overview/ESTADO_ACTUAL.md](overview/ESTADO_ACTUAL.md)
 - **Scopes de documentación**: [guides/SCOPES_DOCUMENTACION.md](guides/SCOPES_DOCUMENTACION.md)
 
@@ -154,7 +128,7 @@ Docs/
 
 Cuando cambies código, actualiza la documentación correspondiente siguiendo la estructura del proyecto:
 
-- **Nuevo módulo** (`Particles/`, `JUCE/`, `CALIB/`) → Crear carpeta en `Docs/` con `README.md`, `readme.md`, `manual.md`, `spec.md`
+- **Nuevo módulo** (`Particles/`, `JUCE/`) → Crear carpeta en `Docs/` con `README.md`, `readme.md`, `manual.md`, `spec.md`
 - **Cambios en contrato OSC** → Actualizar `api-osc.md` (cuando se cree)
 - **Cambios arquitectónicos** → Actualizar `specs/spec.md` y `overview/ESTADO_ACTUAL.md`
 - **Nuevas fases completadas** → Actualizar `overview/ESTADO_ACTUAL.md` y `specs/PLAN_IMPLEMENTACION.md`
@@ -174,4 +148,4 @@ Mantén la separación entre niveles de lectura:
 
 ---
 
-**Última actualización**: 2026-02-11
+**Última actualización**: 2026-01-20

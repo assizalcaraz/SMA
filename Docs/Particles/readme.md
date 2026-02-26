@@ -63,7 +63,27 @@ Este módulo implementa el sistema de partículas físicas que responde a gestos
   - ✅ Configuración de host y puerto (127.0.0.1:9000)
   - ✅ Validación de mensajes antes de envío
 
-### 📋 Pendiente
+- **Mejoras ISTR (Audit Pack)**
+  - Puerta de reposo: no se generan hits cuando la velocidad normal de colisión es inferior a un umbral (evita “rest hits”).
+  - Energía: la contribución de distancia está ponderada por velocidad, evitando energía por acumulación de distancia en reposo.
+  - Calidad: suelo de energía perceptible (ENERGY_FLOOR), cooldown tras filtro de calidad; contadores de auditoría (candidatos, pending, validated, sent, descartes).
+  - Fairness: priorización por energía (nth_element/partial_sort) antes del rate limiting para reducir sesgo FIFO; desempate por (id, surface) para evitar dominancia fija.
+  - Rate limiting: dos token buckets (borde y partícula-partícula) con presupuesto borde más estricto.
+  - **Presupuesto por frame**: antes del token bucket se aplica `budget_frame = min(max_per_frame, ceil(target_hits_per_second/fps))`; se envían solo los top `budget_frame` por energía, reduciendo volumen patológico y drops por limiter; contador `discarded_by_budget` en overlay.
+  - Debug: fondo semi-opaco detrás del overlay para legibilidad.
+
+### Verificación (contadores y token buckets)
+
+- **Tiempo base del overlay**: Los contadores con etiqueta `(per_sec)` se resetean cada segundo; el resto son por frame o acumulados en el frame actual.
+- **this_frame**: Muestra `validated`, `sent`, `dropped` del frame actual. Con OSC ON, `validated` y `sent` deben coincidir; si no, revisar que `hits_sent_osc++` se llame solo en el bucle que invoca `sendHitEvent(event)`.
+- **Selección por presupuesto vs token bucket**: Antes de `processPendingHits()` se aplica un **presupuesto por frame** (`budget_frame = min(max_per_frame, ceil(target_hits_per_second / fps))`). Se eligen los `budget_frame` eventos de mayor energía (nth_element + resize); el resto se cuenta como `discarded_by_budget`. El **token bucket** sigue actuando como red de seguridad sobre ese subconjunto ya reducido, por lo que `osc_msgs_dropped_by_rate_limiter` debería ser bajo (objetivo &lt; 5% de sent_osc). `discarded_by_budget` (per_sec) será alto cuando hay muchos candidatos; es la selección por calidad, no un fallo.
+- **Tokens**: `Tokens border` y `pp` son los tokens disponibles tras el refill (cada frame: `tokens = min(burst, tokens + rate*dt_sec)`). Con presupuesto activo, el volumen que llega al limiter es menor y los tokens no deberían agotarse de forma constante.
+- **Criterios de aceptación**:
+  - Partículas en reposo: `candidate_p2p` ~0 y `sent_osc` ~0.
+  - Alta densidad: `dropped_by_rate_limiter` (per_sec) bajo respecto a `sent_osc`; `discarded_by_budget` alto (esperado); `sent_osc` cercano a `target_hits_per_second` (acotado por max_per_frame y candidatos).
+  - PAS recibe menos o similar OSC/s, con mejor claridad perceptual.
+
+### Pendiente
 
 - **Fase 3b**: Integración MediaPipe (opcional/tardía)
 

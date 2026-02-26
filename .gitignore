@@ -9,6 +9,7 @@ build/
 Builds/*/build/
 bin/*.app/
 bin/*.app/Contents/MacOS/*
+Particles/bin/
 
 # Compiled binaries
 *.o
@@ -36,5 +37,12 @@ DerivedData/
 *.tmp
 *.log
 
-# Material de referencia académica (no se trackea)
+# Rama entrega: no trackear CALIB ni artefactos locales
+maad-2-calib/
 app-calib/
+Audiovisual/
+Modular/
+SMA_core_audit.zip
+SMA_v0.4_audit_export.zip
+Sistema Modular Audiovisual.code-workspace
+FRAGMENTOS_GRABACION.md
