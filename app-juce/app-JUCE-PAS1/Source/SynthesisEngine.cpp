@@ -33,6 +33,7 @@ void SynthesisEngine::prepare(double sampleRate)
     prevBrightness = brightness.load();
     prevDamping = damping.load();
     parameterUpdateCounter = 0;
+    smoothedDensity = 0.0f;
     
     // DIAGNOSTIC: For stability testing, use:
     // - Buffer size: 1024 samples
@@ -71,10 +72,32 @@ void SynthesisEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, int star
             prevBrightness = currentBrightness;
             prevDamping = currentDamping;
         }
+        // M4: Sincronizar flag de carácter al VoiceManager
+        voiceManager.setEnableM4Character(enableM4Character.load());
     }
     
     // Renderizar voces
     voiceManager.renderNextBlock(buffer, startSample, numSamples);
+
+    // M4: Compensación de densidad (gain trim suave para evitar clipping en escenas densas)
+    if (enableDensityCompensation.load())
+    {
+        int activeCount = voiceManager.getActiveVoiceCount();
+        int maxV = std::max(1, maxVoices.load());
+        float currentDensity = (float)activeCount / (float)maxV;
+        float tauSamples = (float)(currentSampleRate * M4_DENSITY_TAU_MS * 0.001);
+        float alpha = (tauSamples > 0.0f && numSamples > 0)
+            ? std::exp(-(float)numSamples / tauSamples) : 0.0f;
+        smoothedDensity = alpha * smoothedDensity + (1.0f - alpha) * currentDensity;
+        float gainTrim = 1.0f / std::sqrt(1.0f + M4_KDENSITY * smoothedDensity);
+        gainTrim = juce::jlimit(0.25f, 1.0f, gainTrim);
+        for (int ch = 0; ch < buffer.getNumChannels(); ch++)
+        {
+            float* data = buffer.getWritePointer(ch, startSample);
+            for (int i = 0; i < numSamples; i++)
+                data[i] *= gainTrim;
+        }
+    }
     
     // Renderizar plate y sumar al buffer (pre-limiter)
     int numChannels = buffer.getNumChannels();
@@ -225,12 +248,13 @@ float SynthesisEngine::getPlateVolume() const
 //==============================================================================
 void SynthesisEngine::triggerTestVoice()
 {
-    // El audio thread procesará el evento en el próximo renderNextBlock()
+    // El audio thread procesará el evento en el próximo renderNextBlock().
+    // Tone/Decay desde sliders (atómicos) para que Test Trigger suene según UI; ruta cruda, sonido base (sin fusión ni border).
     HitEvent event;
     event.baseFreq = testFreq.load();
     event.amplitude = testAmplitude.load();
-    event.damping = 0.5f; // Valor fijo
-    event.brightness = 0.5f; // Valor fijo
+    event.damping = damping.load();
+    event.brightness = brightness.load();
     event.metalness = metalness.load();
     event.waveform = static_cast<ModalVoice::ExcitationWaveform>(waveform.load());
     event.subOscMix = subOscMix.load();
@@ -303,6 +327,7 @@ void SynthesisEngine::reset()
     voiceManager.resetAll();
     plateSynth.reset();
     outputLevel = 0.0f;
+    smoothedDensity = 0.0f;
     hitsReceived.store(0, std::memory_order_relaxed);
     hitsTriggered.store(0, std::memory_order_relaxed);
     hitsDiscarded.store(0, std::memory_order_relaxed);
@@ -310,6 +335,27 @@ void SynthesisEngine::reset()
     fusedHitsDiscardedQueue.store(0, std::memory_order_relaxed);
     blocksClippedCount.store(0, std::memory_order_relaxed);
     fusedFifo.reset();
+}
+
+//==============================================================================
+void SynthesisEngine::setEnableM4Character(bool enable)
+{
+    enableM4Character.store(enable);
+}
+
+bool SynthesisEngine::getEnableM4Character() const
+{
+    return enableM4Character.load();
+}
+
+void SynthesisEngine::setEnableDensityCompensation(bool enable)
+{
+    enableDensityCompensation.store(enable);
+}
+
+bool SynthesisEngine::getEnableDensityCompensation() const
+{
+    return enableDensityCompensation.load();
 }
 
 //==============================================================================
