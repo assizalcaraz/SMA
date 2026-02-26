@@ -9,6 +9,7 @@ build/
 Builds/*/build/
 bin/*.app/
 bin/*.app/Contents/MacOS/*
+Particles/bin/
 
 # Compiled binaries
 *.o
