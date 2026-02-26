@@ -76,7 +76,12 @@ private:
     
     juce::ToggleButton limiterToggle;
     juce::Label limiterLabel;
-    
+    juce::ToggleButton densityCompToggle;   // M4: compensación por densidad
+    juce::ToggleButton centerBiasToggle;    // M4: center bias espacial
+    juce::ToggleButton demoModeToggle;       // M5: demo mode (hide advanced UI)
+    juce::ComboBox presetComboBox;          // M5: preset selector
+    juce::Label presetLabel;
+    juce::TextButton resetPresetButton;     // M5: reset to current / default preset
     juce::TextButton testTriggerButton;
     
     juce::Label outputLevelLabel;
@@ -106,6 +111,16 @@ private:
     
     /** Si true (default), M2 fusion: los /hit se agregan por cuadrante/ventana 20 ms y se encolan como FusedHitSnapshot. */
     bool enableFusionAggregation = true;
+
+    /** M4: Identidad Click-Resonant y controles mínimos. Default ON. */
+    bool enableM4Character = true;
+    /** M4: Compensación de ganancia por densidad. Default ON. */
+    bool enableDensityCompensation = true;
+    /** M4: Center bias <= 1.5 dB en HitAggregator. Default ON. */
+    bool enableCenterBias = true;
+
+    /** M5: Demo mode — hide advanced counters for presentation/evaluation. */
+    bool demoMode_{false};
     
     HitAggregator hitAggregator;
     AggregatorTimer aggregatorTimer;
@@ -128,6 +143,9 @@ private:
     void mapOSCHitToEvent(const juce::OSCMessage& message);
     void updateOSCState(const juce::OSCMessage& message);
     void mapOSCPlateToEvent(const juce::OSCMessage& message);
+
+    /** M5: Apply preset by index (0-based). Updates sliders, toggles, engine and aggregator. */
+    void applyPreset(int presetIndex);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

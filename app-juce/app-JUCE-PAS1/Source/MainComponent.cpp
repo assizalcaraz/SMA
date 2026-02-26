@@ -40,6 +40,44 @@ MainComponent::MainComponent()
     limiterLabel.setText("Clipper", juce::dontSendNotification);
     limiterLabel.attachToComponent(&limiterToggle, false);
     addAndMakeVisible(&limiterLabel);
+
+    // M4 toggles (Density Comp, Center Bias) - visibility in resized when M4
+    densityCompToggle.setButtonText("Density Comp");
+    densityCompToggle.setToggleState(enableDensityCompensation, juce::dontSendNotification);
+    densityCompToggle.addListener(this);
+    addAndMakeVisible(&densityCompToggle);
+    centerBiasToggle.setButtonText("Center Bias");
+    centerBiasToggle.setToggleState(enableCenterBias, juce::dontSendNotification);
+    centerBiasToggle.addListener(this);
+    addAndMakeVisible(&centerBiasToggle);
+    
+    // M5: Preset selector
+    presetComboBox.addItem("Dry Click", 1);
+    presetComboBox.addItem("Bright Spray", 2);
+    presetComboBox.addItem("Soft Foam", 3);
+    presetComboBox.addItem("Heavy Border", 4);
+    presetComboBox.addItem("Center Focus", 5);
+    presetComboBox.addItem("Wide Dark", 6);
+    presetComboBox.addItem("Crisp Short", 7);
+    presetComboBox.addItem("Default (M4)", 8);
+    presetComboBox.setSelectedId(8, juce::dontSendNotification); // Default (M4)
+    presetComboBox.addListener(this);
+    addAndMakeVisible(&presetComboBox);
+    presetLabel.setText("Preset", juce::dontSendNotification);
+    presetLabel.attachToComponent(&presetComboBox, false);
+    presetLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(&presetLabel);
+    
+    resetPresetButton.setButtonText("Reset");
+    resetPresetButton.addListener(this);
+    addAndMakeVisible(&resetPresetButton);
+    
+    demoModeToggle.setButtonText("Demo Mode");
+    demoModeToggle.setToggleState(demoMode_, juce::dontSendNotification);
+    demoModeToggle.addListener(this);
+    addAndMakeVisible(&demoModeToggle);
+    
+    applyPreset(7); // Default (M4) initial state
     
     // Test trigger button
     testTriggerButton.setButtonText("Test Trigger");
@@ -103,6 +141,10 @@ MainComponent::MainComponent()
     if (enableFusionAggregation)
         aggregatorTimer.startTimer(HitAggregator::WINDOW_MS);
     
+    // M4: Sincronizar toggles al engine (A/B: cambiar enableM4Character etc. y recompilar o exponer en UI)
+    synthesisEngine.setEnableM4Character(enableM4Character);
+    synthesisEngine.setEnableDensityCompensation(enableDensityCompensation);
+
     // Tamaño por defecto: ancho reducido (columna derecha = Clipper + debug en vertical)
     setSize (540, 600);
         
@@ -181,13 +223,19 @@ void MainComponent::paint (juce::Graphics& g)
     auto topArea = getLocalBounds().removeFromTop(50);
     g.setColour (juce::Colours::white);
     g.setFont (24.0f);
-    juce::String title = enableFusionAggregation ? "PAS-1 (M3 Perceptual)" : "PAS-1-SYNTH";
+    juce::String title;
+    if (enableFusionAggregation && enableM4Character)
+        title = "PAS-1 (M4 Character)";
+    else if (enableFusionAggregation)
+        title = "PAS-1 (M3 Perceptual)";
+    else
+        title = "PAS-1-SYNTH";
     g.drawText (title, topArea.removeFromTop(28).reduced(10), juce::Justification::centred, false);
     if (enableFusionAggregation)
     {
         g.setFont (12.0f);
         g.setColour (juce::Colours::lightgrey);
-        g.drawText ("Perceptual Mode", topArea.reduced(10), juce::Justification::centred, false);
+        g.drawText (enableM4Character ? "Perceptual Mode (M4)" : "Perceptual Mode", topArea.reduced(10), juce::Justification::centred, false);
     }
 }
 
@@ -205,7 +253,20 @@ void MainComponent::resized()
     auto rightColumn = area.removeFromRight(rightColumnWidth);
     
     const int debugRowHeight = 22;
+    // M5: Preset dropdown and Reset at top of right column
+    auto presetRow = rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2);
+    presetLabel.setBounds(presetRow.removeFromLeft(labelWidth));
+    presetComboBox.setBounds(presetRow);
+    resetPresetButton.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    demoModeToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    rightColumn.removeFromTop(2); // small gap
     limiterToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    bool m4Mode = enableFusionAggregation && enableM4Character;
+    if (m4Mode)
+    {
+        densityCompToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+        centerBiasToggle.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
+    }
     testTriggerButton.setBounds(rightColumn.removeFromTop(debugRowHeight + 4).reduced(margin, 2));
     rightColumn.removeFromTop(4); // separación
     outputLevelLabel.setBounds(rightColumn.removeFromTop(debugRowHeight).reduced(margin, 2));
@@ -222,18 +283,45 @@ void MainComponent::resized()
     auto voicesArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
     voicesLabel.setBounds(voicesArea.removeFromLeft(labelWidth));
     voicesSlider.setBounds(voicesArea);
-    
-    auto metalnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
-    metalnessSlider.setBounds(metalnessArea);
-    
-    auto brightnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    brightnessLabel.setBounds(brightnessArea.removeFromLeft(labelWidth));
-    brightnessSlider.setBounds(brightnessArea);
-    
-    auto dampingArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
-    dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
-    dampingSlider.setBounds(dampingArea);
+
+    if (m4Mode)
+    {
+        // M4: solo Tone (brightness) y Decay (damping); Metalness oculto
+        brightnessLabel.setText("Tone", juce::dontSendNotification);
+        dampingLabel.setText("Decay", juce::dontSendNotification);
+        auto toneArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        brightnessLabel.setBounds(toneArea.removeFromLeft(labelWidth));
+        brightnessSlider.setBounds(toneArea);
+        auto decayArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        dampingLabel.setBounds(decayArea.removeFromLeft(labelWidth));
+        dampingSlider.setBounds(decayArea);
+        metalnessLabel.setVisible(false);
+        metalnessSlider.setVisible(false);
+        metalnessLabel.setBounds(0, 0, 0, 0);
+        metalnessSlider.setBounds(0, 0, 0, 0);
+        densityCompToggle.setVisible(true);
+        centerBiasToggle.setVisible(true);
+    }
+    else
+    {
+        brightnessLabel.setText("Brightness", juce::dontSendNotification);
+        dampingLabel.setText("Damping", juce::dontSendNotification);
+        auto metalnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        metalnessLabel.setBounds(metalnessArea.removeFromLeft(labelWidth));
+        metalnessSlider.setBounds(metalnessArea);
+        metalnessLabel.setVisible(true);
+        metalnessSlider.setVisible(true);
+        auto brightnessArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        brightnessLabel.setBounds(brightnessArea.removeFromLeft(labelWidth));
+        brightnessSlider.setBounds(brightnessArea);
+        auto dampingArea = leftColumn.removeFromTop(sliderHeight).reduced(margin);
+        dampingLabel.setBounds(dampingArea.removeFromLeft(labelWidth));
+        dampingSlider.setBounds(dampingArea);
+        densityCompToggle.setVisible(false);
+        centerBiasToggle.setVisible(false);
+        densityCompToggle.setBounds(0, 0, 0, 0);
+        centerBiasToggle.setBounds(0, 0, 0, 0);
+    }
     
     // M3: Waveform, SubOsc Mix, Pitch Range solo visibles sin fusión (evitar controles "muertos")
     bool showLegacyControls = !enableFusionAggregation;
@@ -265,6 +353,14 @@ void MainComponent::resized()
         pitchRangeLabel.setBounds(empty);
         pitchRangeSlider.setBounds(empty);
     }
+    
+    // M5: Demo mode — hide advanced counters and optional toggles
+    const bool showAdvanced = !demoMode_;
+    m2FusionStatsLabel.setVisible(showAdvanced);
+    clipperHitCountLabel.setVisible(showAdvanced);
+    hitsStatsLabel.setVisible(showAdvanced);
+    densityCompToggle.setVisible(m4Mode && showAdvanced);
+    centerBiasToggle.setVisible(m4Mode && showAdvanced);
 }
 
 //==============================================================================
@@ -303,9 +399,28 @@ void MainComponent::buttonClicked (juce::Button* button)
     {
         synthesisEngine.triggerTestVoice();
     }
+    else if (button == &resetPresetButton)
+    {
+        presetComboBox.setSelectedId(8, juce::dontSendNotification); // Default (M4)
+        applyPreset(7);
+    }
+    else if (button == &demoModeToggle)
+    {
+        demoMode_ = demoModeToggle.getToggleState();
+        resized();
+    }
     else if (button == &limiterToggle)
     {
         synthesisEngine.setLimiterEnabled(limiterToggle.getToggleState());
+    }
+    else if (button == &densityCompToggle)
+    {
+        enableDensityCompensation = densityCompToggle.getToggleState();
+        synthesisEngine.setEnableDensityCompensation(enableDensityCompensation);
+    }
+    else if (button == &centerBiasToggle)
+    {
+        enableCenterBias = centerBiasToggle.getToggleState();
     }
 }
 
@@ -317,6 +432,12 @@ void MainComponent::comboBoxChanged (juce::ComboBox* comboBox)
         int selectedId = waveformComboBox.getSelectedId();
         ModalVoice::ExcitationWaveform waveform = static_cast<ModalVoice::ExcitationWaveform>(selectedId - 1);
         synthesisEngine.setWaveform(waveform);
+    }
+    else if (comboBox == &presetComboBox)
+    {
+        int id = presetComboBox.getSelectedId();
+        if (id >= 1 && id <= 8)
+            applyPreset(id - 1);
     }
 }
 
@@ -467,8 +588,40 @@ void AggregatorTimer::timerCallback()
 }
 
 //==============================================================================
+void MainComponent::applyPreset(int presetIndex)
+{
+    struct Preset { int voices; float tone; float decay; bool densityComp; bool centerBias; };
+    static const Preset presets[] = {
+        { 8,  0.25f, 0.25f, true,  true  },  // 0 Dry Click
+        { 12, 0.85f, 0.45f, true,  true  },  // 1 Bright Spray
+        { 10, 0.45f, 0.75f, true,  true  },  // 2 Soft Foam
+        { 16, 0.35f, 0.85f, true,  true  },  // 3 Heavy Border
+        { 8,  0.55f, 0.55f, true,  true  },  // 4 Center Focus
+        { 14, 0.20f, 0.65f, false, false },  // 5 Wide Dark
+        { 10, 0.70f, 0.30f, true,  false },  // 6 Crisp Short
+        { 8,  0.50f, 0.50f, true,  true  },  // 7 Default (M4)
+    };
+    if (presetIndex < 0 || presetIndex >= 8)
+        return;
+    const Preset& p = presets[presetIndex];
+    voicesSlider.setValue(p.voices, juce::dontSendNotification);
+    brightnessSlider.setValue(p.tone, juce::dontSendNotification);
+    dampingSlider.setValue(p.decay, juce::dontSendNotification);
+    synthesisEngine.setMaxVoices(p.voices);
+    synthesisEngine.setBrightness(p.tone);
+    synthesisEngine.setDamping(p.decay);
+    enableDensityCompensation = p.densityComp;
+    enableCenterBias = p.centerBias;
+    densityCompToggle.setToggleState(p.densityComp, juce::dontSendNotification);
+    centerBiasToggle.setToggleState(p.centerBias, juce::dontSendNotification);
+    synthesisEngine.setEnableDensityCompensation(p.densityComp);
+    hitAggregator.setEnableCenterBias(p.centerBias);
+}
+
+//==============================================================================
 void MainComponent::flushAggregatorWindow()
 {
+    hitAggregator.setEnableCenterBias(enableCenterBias);
     FusedHitSnapshot snaps[HitAggregator::NUM_QUADRANTS];
     int n = hitAggregator.closeWindow(snaps, HitAggregator::NUM_QUADRANTS);
     fusedProduced.fetch_add(n, std::memory_order_relaxed);
